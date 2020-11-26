@@ -37,9 +37,9 @@ except Exception as e:
 
 
 # Initial deisign  no augmentaion
-# case_list = ['C:\\MyProjects\\infantBrainSeg2019\\Brain_MultiRegionsInitial']
+case_list = ['C:\\MyProjects\\LungSegmentaiton\\EXP1']
 # for laptop
-case_list = ['E:\\Projects\\LungSegmentaiton\\EXP1']
+# case_list = ['E:\\Projects\\LungSegmentaiton\\EXP1']
 for i, each_case in enumerate(case_list):
     print("i:", i)
     print(each_case)

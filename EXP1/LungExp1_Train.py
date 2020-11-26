@@ -1899,8 +1899,8 @@ def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, tr
     # print("mask name:", mask_name)
     # image = krs_image.load_img(img_path, target_size=(input_shape[0], input_shape[1]))
     # mask = krs_image.load_img(mask_path, grayscale=True, target_size=(input_shape[0], input_shape[1]))
-    input = krs_image.img_to_array(input)
-    mask = krs_image.img_to_array(mask)
+    # image = krs_image.img_to_array(image)
+    # mask = krs_image.img_to_array(mask)
     # input = np.expand_dims(input, 0)
     # mask = np.expand_dims(mask, 0)
     # print("img shape before aug:", image.shape)
@@ -2187,7 +2187,7 @@ if __name__ == "__main__":
         # print("total {} val samples read".format(len(val_input_paths)))
 
         # T1 LAB PC
-        train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+        train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         # val_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Validation/*')
         print("total len of train series:", len(train_total_series))
         # print("total len of val series:", len(val_total_series))
