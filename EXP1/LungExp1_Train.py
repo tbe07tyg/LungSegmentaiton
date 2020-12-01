@@ -51,12 +51,13 @@ print("keras version:", keras.__version__)
 np.set_printoptions(precision=3, suppress=True)
 MAX_VERTICES = 1000 #that allows the labels to have 1000 vertices per polygon at max. They are reduced for training
 # ANGLE_STEP  = 14 #that means Poly-YOLO will detect 360/15=24 vertices per polygon at max
-ANGLE_STEP  =  1.8888888888888888
+
 Ds = 35
 # ANGLE_STEP  =  10.222222222222221 #that means Poly-YOLO will detect 360/15=24 vertices per polygon at max
 max_boxes = 80
 # NUM_ANGLES3  = int(360 // ANGLE_STEP * 3) #72 = (360/15)*3
 # print("NUM_ANGLES3:", NUM_ANGLES3)
+ANGLE_STEP  =  1.8888888888888888
 NUM_ANGLES  = int(360 // ANGLE_STEP) # 24
 print("ANGLE_STEP:", ANGLE_STEP)
 
@@ -1570,7 +1571,7 @@ class YOLO(object):
         try:
             self.yolo_model = load_model(model_path, compile=False)
         except:
-            self.yolo_model,_ = yolo_body(Input(shape=(256, 256, 3)), anchors_per_level, num_classes)
+            self.yolo_model,_ = yolo_body(Input(shape=(512, 512, 3)), anchors_per_level, num_classes)
             self.yolo_model.load_weights(self.model_path, by_name=True)  # make sure model, anchors and classes match
         else:
             # novy output
@@ -1725,7 +1726,7 @@ class YOLO(object):
 #               [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
 
 
-def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_series, input_nonzeros_indexs_series, case_count, total_samples, batch_size, input_shape, anchors, num_classes, train_flag):
+def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_series, input_nonzeros_indexs_series, total_samples, batch_size, input_shape, anchors, num_classes, train_flag):
     """
     :param images_list:
     :param masks_list:
@@ -1734,6 +1735,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
     :param train_flag:  STRING Train or else:
     :return:
     """
+    case_count =0
     total_num_cases = len(labelSeries)
     print("total_num_cases:", total_num_cases)
     # n = total_num_cases * 256
@@ -1762,6 +1764,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
 
     total_count = 0
     one_case_conter = 0
+    epoch = 0
     while True:
         image_data_list = []
         box_data_list = []
@@ -1780,6 +1783,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
         temp_label_series = labelSeries[case_count]
         input_mean_series =  input_mean_list_series[case_count]
         input_std_series = input_std_list_series[case_count]
+        # print("input_nonzeros_indexs_series:", input_nonzeros_indexs_series)
         input_nonzeros_indexs = input_nonzeros_indexs_series[case_count]
         # case_count =  (case_count + 1) % total_num_cases
 
@@ -1788,6 +1792,9 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
         # print("case name:", case_name)
         input_data = extract_series(temp_input_series)
         label_data = extract_series(temp_label_series)
+
+        if len(input_nonzeros_indexs) != 0:
+            print("found num of non zeros slices:", len(input_nonzeros_indexs))
         # select nonzero slices:
         non_zero_inputs = input_data[:,:, input_nonzeros_indexs]
         non_zero_masks = label_data[:, :, input_nonzeros_indexs]
@@ -1799,7 +1806,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             #     np.random.shuffle(ziped_img_mask_list)
             # images_list, masks_list = zip(*ziped_img_mask_list)
             # print("------------------------>\n")
-            print("total slices in current case:", input_data.shape[-1])
+            print("total slices in current case:", non_zero_inputs.shape[-1])
             print("current case index:", case_count)
             print("image index in total:", total_count)
             print("image index in current case:", one_case_conter)
@@ -1810,13 +1817,13 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             temp_img = (temp_img - input_mean_series)/input_std_series
             # temp_mask = (temp_mask - input_mean_series)/input_std_series
             # plot check temp slice image and label
-            fig = plt.figure(figsize=(8, 8))
-            for i in range(0, 0):
-                fig.add_subplot(1, 2, i)
-                plt.imshow(temp_img)
-                fig.add_subplot(1, 2, i+1)
-                plt.imshow(temp_mask)
-            plt.show()
+            # fig = plt.figure(figsize=(8, 8))
+            # for i in range(0, 0):
+            #     fig.add_subplot(1, 2, i)
+            #     plt.imshow(temp_img)
+            #     fig.add_subplot(1, 2, i+1)
+            #     plt.imshow(temp_mask)
+            # plt.show()
 
             # print("temp_img shape:", temp_img.shape)
             # print("temp_mask shape:", temp_mask.shape)
@@ -1849,14 +1856,39 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             # print("input shape: ", img.shape)
             # print("mask shape:", aug_mask.shape)
             # check the data
-            # if count+1==n:
+            # if total_count==total_samples:
             #     epoch+=1
             # background = np.ones(img.shape)*255
-
-            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_2_".format(epoch, count) + 'mask.jpg', aug_mask)
+            #
+            # for c in myPolygon:
+            #     # compute the center of the contour
+            #     M = cv2.moments(c)
+            #     cX = int(M["m10"] / M["m00"])
+            #     cY = int(M["m01"] / M["m00"])
+            #     # draw the contour and center of the shape on the image
+            #     cv2.drawContours(background, [c], -1, (0, 255, 0), 2)
+            #
+            #     # if aug_mask[cY,cX] ==0:
+            #     #     cv2.circle(background, (cX, cY), 7, (222, 100, 170), -1)
+            #     # else:
+            #     #     cv2.circle(background, (cX, cY), 7, (0, 255, 0), -1)
+            #
+            #
+            #     cv2.circle(background, (cX, cY), 7, (0, 255, 0), -1)
+            #     cv2.putText(background, "center", (cX - 20, cY - 20),
+            #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (222, 100, 255), 2)
+            #     # show the image
+            #     # cv2.imshow("Image", background)
+            #     # cv2.waitKey(0)
+            #     cv2.imwrite(contours_compare_root + "batch{}_idx{}_foundMask_".format(epoch, total_count) + 'mask.jpg',
+            #                 aug_mask * 255)
+            #     cv2.imwrite(contours_compare_root + "batch{}_idx{}_found{}C_".format(epoch, total_count, len(myPolygon)) + 'selected_contour.jpg', background)
+            # print("selected_coutours:", selected_coutours)
+            # print("found  contours#:", len(myPolygon))
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_foundMask_".format(epoch, total_count) + 'mask.jpg', aug_mask*255)
             # #
-            # cv2.drawContours(background, selected_coutours, -1, (60, 180, 75))
-            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_3_".format(epoch, count) + 'selected_contour.jpg', background)
+            # cv2.drawContours(background, myPolygon, -1, (60, 180, 75))
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_found{}C_".format(epoch, total_count, len(myPolygon)) + 'selected_contour.jpg', background)
             # cv2.imshow(" ", background)
             # cv2.waitKey()  # show on line need divided 255 save into folder should remove keep in 0 to 255
             # print("myPolygon.shape:", myPolygon.shape)
@@ -1892,6 +1924,9 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
 
 
 def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, train_or_test):
+
+    input = np.expand_dims(input,-1)
+    input =  np.concatenate([input, input, input], -1)
     # load data ------------------------>
     # image_name = os.path.basename(img_path).replace('.JPG', '')
     # mask_name = os.path.basename(mask_path).replace('.JPG', '')
@@ -1899,8 +1934,8 @@ def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, tr
     # print("mask name:", mask_name)
     # image = krs_image.load_img(img_path, target_size=(input_shape[0], input_shape[1]))
     # mask = krs_image.load_img(mask_path, grayscale=True, target_size=(input_shape[0], input_shape[1]))
-    # image = krs_image.img_to_array(image)
-    # mask = krs_image.img_to_array(mask)
+    input = krs_image.img_to_array(input)
+    mask = krs_image.img_to_array(mask)
     # input = np.expand_dims(input, 0)
     # mask = np.expand_dims(mask, 0)
     # print("img shape before aug:", image.shape)
@@ -1917,6 +1952,7 @@ def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, tr
         aug_mask = mask_datagen.random_transform(mask, seed=seed)
 
         copy_mask = aug_mask.copy().astype(np.uint8)
+        print("aug_image_range:[{}, {}]".format(aug_image.min(), aug_image.max()))
         print("copy_mask_range:[{}, {}]".format(copy_mask.min(), copy_mask.max()))
     else:
         # print("Test no aug")
@@ -1936,7 +1972,7 @@ def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, tr
     selected_coutours = []
     for x in range(len(contours)):
         # print("countour x:", x, contours[x].shape)
-        if contours[x].shape[0] > 8:  # require one contour at lest 8 polygons(360/40=9)
+        if contours[x].shape[0] > 20:  # require one contour at lest 8 polygons(360/40=9)
             selected_coutours.append(contours[x])
     # print("# selected_coutours:", len(selected_coutours))
 
@@ -2080,6 +2116,41 @@ def get_anchors(anchors_path):
     anchors = [float(x) for x in anchors.split(',')]
     return np.array(anchors).reshape(-1, 2)
 
+def warm_up_func(train_input_series, train_mask_series):
+    train_mean_list_series = []
+    train_std_list_series = []
+    train_nonzeros_indexs_series = []
+    train_nonzeros_slices_num = 0
+    for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
+
+        non_zeros_indexes = []
+
+        data_input = extract_series(each_input_series)
+        data_mask = extract_series(each_mask_series)
+        each_v = data_input.reshape([-1])
+        print("each_v shape:", each_v.shape)
+        each_data_mean = np.mean(each_v, axis=0)
+        each_data_std = np.std(each_v, axis=0)
+        train_mean_list_series.append(each_data_mean)
+        train_std_list_series.append(each_data_std)
+        print("each train series data shape:", data_input.shape)
+
+        assert data_input.shape[-1] == data_mask.shape[-1]
+        for i in range(data_mask.shape[-1]):
+            temp_mask = data_mask[:, :, i]
+            # print("each slice mask shape:", temp_mask.shape)
+            nonzeros_in_mask = np.count_nonzero(temp_mask)
+            if nonzeros_in_mask > 5:
+                # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
+                non_zeros_indexes.append(i)
+                train_nonzeros_slices_num += 1
+            else:
+                pass
+        train_nonzeros_indexs_series.append(non_zeros_indexes)
+
+    return train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, train_nonzeros_slices_num
+
+
 if __name__ == "__main__":
 
     """
@@ -2129,7 +2200,7 @@ if __name__ == "__main__":
         anchors = get_anchors(anchors_path)  # shape [# of anchors, 2]
 
         # input_shape = (416,832) # multiple of 32, hw
-        input_shape = (256, 256) # multiple of 32, hw
+        input_shape = (512, 512) # multiple of 32, hw
 
         if phase == 1:
             model = create_model(input_shape, anchors, num_classes, load_pretrained=False)
@@ -2159,36 +2230,12 @@ if __name__ == "__main__":
                                                              embeddings_freq=0, embeddings_layer_names=None,
                                                              embeddings_metadata=None)
 
-        # for my data generator
-        # # for train dataset
-        # train_input_paths = glob('E:\\dataset\\Tongue\\tongue_dataset_tang_plus\\backup\\inputs\\Tongue/*')
-        # train_mask_paths = glob('E:\\dataset\\Tongue\\tongue_dataset_tang_plus\\backup\\binary_labels\\Tongue/*.jpg')
-        # print("len of train imgs:", len(train_input_paths))
-        #
-        # assert len(train_input_paths) == len(train_mask_paths), "train imgs and mask are not the same"
-        # # for validation dataset  # we need or label and masks are the same shape
-        # val_input_paths = glob('E:\\dataset\\Tongue\\mytonguePolyYolo\\test\\test_inputs/*')
-        # val_mask_paths = glob('E:\\dataset\\Tongue\\mytonguePolyYolo\\test\\testLabel\\label512640/*.jpg')
-        # assert len(val_input_paths) == len(val_mask_paths), "val imgs and mask are not the same"
 
-        # # # # # # # # # # # for train dataset for the lab
-        # # # # # # # # # # # for train dataset for the lab
-        # train_input_paths = glob('C:\\MyProjects\\data\\tonguePoly\\train\\input/*')
-        # train_mask_paths = glob('C:\\MyProjects\\data\\tonguePoly\\train\\label/*.jpg')
-        # print("len of train imgs:", len(train_input_paths))
-        #
-        # assert len(train_input_paths) == len(train_mask_paths), "train imgs and mask are not the same"
-        # # for validation dataset  # we need or label and masks are the same shape
-        # val_input_paths = glob('C:\\MyProjects\\data\\tonguePoly\\test\\input/*')
-        # val_mask_paths = glob('C:\\MyProjects\\data\\tonguePoly\\test\\label/*.jpg')
-        # assert len(val_input_paths) == len(val_mask_paths), "val imgs and mask are not the same"
 
-        # print("total {} training samples read".format(len(train_input_paths)))
-        # print("total {} val samples read".format(len(val_input_paths)))
-
-        # T1 LAB PC
-        train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
-        # val_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Validation/*')
+        # # T1 LAB PC
+        # train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+        # for laptop
+        train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         print("total len of train series:", len(train_total_series))
         # print("total len of val series:", len(val_total_series))
         train_input_series_paths = []
@@ -2202,106 +2249,60 @@ if __name__ == "__main__":
 
         print("total len of total input series:", len(train_input_series_paths))
         print("total len of total mask series:", len(train_labels_series_paths))
+
+
+        # warm up ~~~---------------->
         # split train dataset:
-        train_input_series = train_input_series_paths[:len(train_input_series_paths) - 2]
-        train_mask_series = train_labels_series_paths[:len(train_labels_series_paths) - 2]
-
-        val_input_series = train_input_series_paths[len(train_input_series_paths) - 2:]
-        val_mask_series = train_labels_series_paths[len(train_labels_series_paths) - 2:]
-
+        print("splitting the training dataset into train and val")
+        train_rate = 0.01
+        # print("raw total series paths:", train_input_series_paths)
+        num_train_cases = int(train_rate * len(train_input_series_paths))
+        print("splitted num_train_cases:", num_train_cases)
+        # for train ->
+        train_input_series = train_input_series_paths[:num_train_cases]
+        print("splitted train_input_series # :", len(train_input_series))
+        train_mask_series = train_labels_series_paths[:num_train_cases]
+        # for val ->
+        val_input_series = train_input_series_paths[
+                           num_train_cases:num_train_cases+1]   # for check purpose only
+        val_mask_series = train_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
+        # val_input_series = train_input_series_paths[num_train_cases:]  ## split training data into real train and validation
+        # val_mask_series = train_labels_series_paths[num_train_cases:]
+        print("splitted val_input_series # :", len((val_input_series)))
+        # anaylize the training CTs
         print("train series len:", len(train_input_series))
         print("val series len:", len(val_input_series))
 
         # warm up for training needed
-        train_mean_list_series = []
-        train_std_list_series = []
-        train_nonzeros_indexs_series = []
-        train_nonzeros_slices_num = 0
 
-        val_mean_list_series = []
-        val_std_list_series = []
-        val_nonzeros_indexs_series = []
-
-        val_nonzeros_slices_num = 0
         print("train warm up ---------------------------->")
-        for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
+        # for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
+        train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, train_nonzeros_slices_num = \
+            warm_up_func(train_input_series, train_mask_series)
 
-            non_zeros_indexes = []
-
-            data_input = extract_series(each_input_series)
-            data_mask = extract_series(each_mask_series)
-            each_v = data_input.reshape([-1])
-            print("each_v shape:", each_v.shape)
-            each_data_mean = np.mean(each_v, axis=0)
-            each_data_std = np.std(each_v, axis=0)
-            train_mean_list_series.append(each_data_mean)
-            train_std_list_series.append(each_data_std)
-            print("each train series data shape:", data_input.shape)
-
-            assert data_input.shape[-1] == data_mask.shape[-1]
-            for i in range(data_mask.shape[-1]):
-                nonzeros_in_mask =  np.count_nonzero(data_input[:,:,i])
-
-                if nonzeros_in_mask > 5:
-                    # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
-                    non_zeros_indexes.append(i)
-                    train_nonzeros_slices_num+=1
-                else:
-                    pass
-            train_nonzeros_indexs_series.append(non_zeros_indexes)
-
-        # for validation
-        print("validation warm up---------------------------->")
-        for each_input_series, each_mask_series in zip(val_input_series, val_mask_series):
-
-            non_zeros_indexes = []
-
-            data_input = extract_series(each_input_series)
-            data_mask = extract_series(each_mask_series)
-            each_v = data_input.reshape([-1])
-            print("each_v shape:", each_v.shape)
-            each_data_mean = np.mean(each_v, axis=0)
-            each_data_std = np.std(each_v, axis=0)
-            val_mean_list_series.append(each_data_mean)
-            val_std_list_series.append(each_data_std)
-            print("each val series data shape:", data_input.shape)
-
-            assert data_input.shape[-1] == data_mask.shape[-1]
-            for i in range(data_mask.shape[-1]):
-                non_zero_mask = data_mask[:, :, i]
-                print("each slice mask shape:", non_zero_mask.shape)
-                nonzeros_in_mask = np.count_nonzero(non_zero_mask)
-
-                if nonzeros_in_mask > 5:
-                    non_zeros_indexes.append(i)
-                    val_nonzeros_slices_num += 1
-                    # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
-                else:
-                    pass
-            val_nonzeros_indexs_series.append(non_zeros_indexes)
-
+        val_mean_list_series, val_std_list_series, val_nonzeros_indexs_series, val_nonzeros_slices_num = \
+            warm_up_func(train_input_series, train_mask_series)
         num_train = train_nonzeros_slices_num
         num_val = val_nonzeros_slices_num
 
 
 
         # create data_generator
-        case_count = 0
+
         # for train:
         train_Gen = LungGen(train_input_series, train_mask_series,
                             train_mean_list_series , train_std_list_series, train_nonzeros_indexs_series,
-                            case_count=case_count,
+
                             total_samples= num_train,
                             batch_size=4,
-                             input_shape=(256, 256),
+                             input_shape=(512, 512),
                              anchors=anchors, num_classes=num_classes,
                              train_flag="Train")
         val_Gen = LungGen(val_input_series, val_mask_series,
-                          train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series,
-                          case_count=case_count,
+                          val_mean_list_series, val_std_list_series, val_nonzeros_indexs_series,
                           total_samples=num_val,
                           batch_size=4,
-                           input_shape=(256, 256),
+                           input_shape=(512,512),
                            anchors=anchors, num_classes=num_classes,
                            train_flag="test")
 
@@ -2366,7 +2367,7 @@ if __name__ == "__main__":
         lossWeights = {"ciou_loss": 1, "confidence_loss": 1, "polar_diou_loss": 1, "class_loss": 1,  "mask_Diceloss": 1}
         model.compile(optimizer=Adadelta(0.5), loss=losses, loss_weights=lossWeights)
 
-        epochs = 100
+        epochs = 2
 
         # os.chdir("/simulator_dataset/imgs") # for the simulator image path
         model.fit_generator(train_Gen,
@@ -2395,12 +2396,12 @@ if __name__ == "__main__":
                      weights_path='model_data/yolo_weights.h5'):
         """create the training model"""
         K.clear_session()  # get a new session
-        image_input = Input(shape=(256, 256, 3))
+        image_input = Input(shape=(512, 512, 3))
         h, w = input_shape
         num_anchors = len(anchors)
         # CODE CHANGED FOR MY NP INTERP
         y_true = Input(shape=(h // grid_size_multiplier, w // grid_size_multiplier, anchors_per_level, num_classes + 5 + NUM_ANGLES))
-        y_true_mask = Input(shape=(256, 256, num_classes))
+        y_true_mask = Input(shape=(512, 512, num_classes))
         print("anchors_per_level:", anchors_per_level)
         print("num_classes:", num_classes)
         model_body, Model_mask = yolo_body(image_input, anchors_per_level, num_classes)
