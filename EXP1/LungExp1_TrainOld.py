@@ -1738,6 +1738,9 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
     case_count =0
     total_num_cases = len(labelSeries)
     print("total_num_cases:", total_num_cases)
+
+    # total batches = 0:
+    total_batches =  total_samples//batch_size
     # n = total_num_cases * 256
     # augment generator
     img_data_gen_args = dict(rotation_range=rotation_range,
@@ -1753,7 +1756,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
                               height_shift_range=height_shift_range,
                               zoom_range=zoom_range,
                               shear_range=shear_range,
-                              # horizontal_flip=horizontal_flip
+                              horizontal_flip=horizontal_flip
                               )
     image_datagen = ImageDataGenerator(**img_data_gen_args)
     mask_datagen = ImageDataGenerator(**mask_data_gen_args)
@@ -1762,8 +1765,9 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
                                       input_mean_list_series, input_std_list_series,
                                       input_nonzeros_indexs_series))
 
-    total_count = 0
-    one_case_conter = 0
+    # t
+    batch_counter = 0
+    slice_counter_per_case = 0
     epoch = 0
     while True:
         image_data_list = []
@@ -1775,7 +1779,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
         # my_annotation = []
         # print(images_list)
         # print(masks_list)
-        if case_count % total_num_cases == 0 and one_case_conter ==0 and total_count ==0 and train_flag == "Train":
+        if batch_counter == 0 and train_flag == "Train":
             np.random.shuffle(ziped_series_mask_list)
             inputSeries, labelSeries, input_mean_list_series, input_std_list_series, input_nonzeros_indexs_series = zip(*ziped_series_mask_list)  # case shuffle not shuffle inside the case
 
@@ -1808,32 +1812,13 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             # print("------------------------>\n")
             print("total slices in current case:", non_zero_inputs.shape[-1])
             print("current case index:", case_count)
-            print("image index in total:", total_count)
-            print("image index in current case:", one_case_conter)
+            print("batch index in one epoch:", batch_counter)
+            print("image index in current case:", slice_counter_per_case)
             print("image index in a batch:", b)
-            temp_img = non_zero_inputs[:, :, one_case_conter]
-            temp_mask = non_zero_masks[:, :, one_case_conter]
+            temp_img = non_zero_inputs[:, :, slice_counter_per_case]
+            temp_mask = non_zero_masks[:, :, slice_counter_per_case]
             # standardize:
             temp_img = (temp_img - input_mean_series)/input_std_series
-            # temp_mask = (temp_mask - input_mean_series)/input_std_series
-            # plot check temp slice image and label
-            # fig = plt.figure(figsize=(8, 8))
-            # for i in range(0, 0):
-            #     fig.add_subplot(1, 2, i)
-            #     plt.imshow(temp_img)
-            #     fig.add_subplot(1, 2, i+1)
-            #     plt.imshow(temp_mask)
-            # plt.show()
-
-            # print("temp_img shape:", temp_img.shape)
-            # print("temp_mask shape:", temp_mask.shape)
-            # print("temp_img range [{}, {}]:".format(temp_img.min(), temp_img.max()))
-            # print("temp_mask range [{}, {}]:".format(temp_mask.min(), temp_mask.max()))
-
-            # if temp_img.min() == temp_img.max() and temp_img.min() ==0:
-            # if temp_mask.max() == 0:
-            #     one_case_conter = (one_case_conter + 1) % input_data.shape[-1]
-            #     total_count = (total_count + 1) % n
 
 
             # ----------------->
@@ -1845,14 +1830,13 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             #                                         train_or_test=train_flag,
             #                                         one_case_conter=one_case_conter, case_count=case_count,
             #                                         case_name=case_name)
-            one_case_conter = (one_case_conter + 1) % non_zero_inputs.shape[-1]
-            total_count = (total_count + 1) % total_samples
+            slice_counter_per_case = (slice_counter_per_case + 1) % non_zero_inputs.shape[-1] # continuously load slices from each case
+            if slice_counter_per_case % non_zero_inputs.shape[-1] == 0:
+                case_count = (case_count +1)% total_num_cases
             b += 1
+
             # if (one_case_conter + 1) % input_data.shape[-1] == 0:
             #     case_count = (case_count + 1) % total_num_cases
-
-            if one_case_conter % non_zero_inputs.shape[-1] == 0:
-                case_count = (case_count + 1) % total_num_cases
             # print("input shape: ", img.shape)
             # print("mask shape:", aug_mask.shape)
             # check the data
@@ -1909,10 +1893,16 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             #     continue
             # --------------------->
             # print("total_count after next:", total_count)
+
             image_data_list.append(img)
             # box_data.append(box)
             box_data_list.append(box)
             mask_data_list.append(aug_mask)
+
+        batch_counter = (batch_counter + 1) % total_batches
+        if batch_counter % total_batches == 0:
+            slice_counter_per_case = 0
+            case_count = 0
 
         image_batch = np.array(image_data_list)
         box_batch = np.array(box_data_list)
@@ -2281,10 +2271,14 @@ if __name__ == "__main__":
             warm_up_func(train_input_series, train_mask_series)
 
         val_mean_list_series, val_std_list_series, val_nonzeros_indexs_series, val_nonzeros_slices_num = \
-            warm_up_func(train_input_series, train_mask_series)
+            warm_up_func(val_input_series, val_mask_series)
+
+
+
         num_train = train_nonzeros_slices_num
         num_val = val_nonzeros_slices_num
-
+        print("found nonzero train slices:", num_train)
+        print("found nonzero val slices:", num_val)
 
 
         # create data_generator
