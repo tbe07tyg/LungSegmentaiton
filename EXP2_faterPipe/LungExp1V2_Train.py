@@ -1922,7 +1922,7 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
               [np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)),
                np.zeros(len(image_data_list))]
 
-def my_get_random_data(input, mask, full_name, image_datagen, mask_datagen, train_or_test):
+def my_get_random_data(input, mask, slice_index, image_datagen, mask_datagen, train_or_test):
 
     input = np.expand_dims(input,-1)
     input =  np.concatenate([input, input, input], -1)
@@ -1978,7 +1978,7 @@ def my_get_random_data(input, mask, full_name, image_datagen, mask_datagen, trai
 
 
     # encode contours into annotation lines ---->
-    annotation_line, myPolygon = encode_polygone(full_name, selected_coutours)
+    annotation_line, myPolygon = encode_polygone(str(slice_index), selected_coutours)
     # decode contours annotation line into distance
     box_data = My_bilinear_decode_annotationlineNP_inter(annotation_line)
 

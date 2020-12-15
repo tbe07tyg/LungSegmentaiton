@@ -45,7 +45,6 @@ from keras.preprocessing import image as krs_image
 import cv2
 from keras.applications.xception import Xception
 import matplotlib.pyplot as plt
-import copy
 
 import keras
 print("keras version:", keras.__version__)
@@ -1766,89 +1765,75 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
                                       input_mean_list_series, input_std_list_series,
                                       input_nonzeros_indexs_series))
 
-
-
     # t
     batch_counter = 0
     slice_counter_per_case = 0
     epoch = 0
-    initial_train_targets = []
     while True:
-        # for every epoch fill the data list:
-        # if batch_counter == 0 and train_flag == "Train" and len(initial_train_targets) == 0:
-        if batch_counter == 0 and len(initial_train_targets) == 0:
-            initial_train_targets =  copy.deepcopy(ziped_series_mask_list)
-            print("full training sereis:", initial_train_targets)
-            print("reset")
-
-        b = 0
         image_data_list = []
         box_data_list = []
         mask_data_list = []
+        # raw_img_path =[]
+        # raw_mask_path = []
+        # # mypolygon_data = []
+        # my_annotation = []
+        # print(images_list)
+        # print(masks_list)
+        if batch_counter == 0 and train_flag == "Train":
+            np.random.shuffle(ziped_series_mask_list)
+            inputSeries, labelSeries, input_mean_list_series, input_std_list_series, input_nonzeros_indexs_series = zip(*ziped_series_mask_list)  # case shuffle not shuffle inside the case
+
+        temp_input_series = inputSeries[case_count]
+        temp_label_series = labelSeries[case_count]
+        input_mean_series =  input_mean_list_series[case_count]
+        input_std_series = input_std_list_series[case_count]
+        # print("input_nonzeros_indexs_series:", input_nonzeros_indexs_series)
+        input_nonzeros_indexs = input_nonzeros_indexs_series[case_count]
+        # case_count =  (case_count + 1) % total_num_cases
+
+       # extract slices: ---------------->
+        case_name = os.path.basename(temp_input_series)
+        # print("case name:", case_name)
+        input_data = extract_series(temp_input_series)
+        label_data = extract_series(temp_label_series)
+
+        if len(input_nonzeros_indexs) != 0:
+            print("found num of non zeros slices:", len(input_nonzeros_indexs))
+        # select nonzero slices:
+        non_zero_inputs = input_data[:,:, input_nonzeros_indexs]
+        non_zero_masks = label_data[:, :, input_nonzeros_indexs]
+        b = 0
+        print("non_zero_inputs shape:", non_zero_inputs.shape)
         while b < batch_size:
-            if len(initial_train_targets)>0:
-                if train_flag == "Train": ##  for train
-                    print("train：")
-                    # random select a series
-                    selected_zip_series =  random.choice(initial_train_targets)
-
-                else:
-                    selected_zip_series = initial_train_targets[0]
-
-
-                print("selected series zip list:", selected_zip_series)
-                inputSeries, labelSeries, input_mean_list_series, input_std_list_series, input_nonzeros_indexs_series = selected_zip_series# case shuffle not shuffle inside the case
-                # 1. check if nonzero index exist:
-                # print("current non zero indices left:", input_nonzeros_indexs_series, len(input_nonzeros_indexs_series))
-                print("current non zero indices left:", len(input_nonzeros_indexs_series))
-                if len(input_nonzeros_indexs_series) > 0:
-                    # 2. read the data and random select one index from nonzero index series
-                    if train_flag == "Train":
-                        print("For train:")
-                        selected_slice_index = random.choice(input_nonzeros_indexs_series)
-                    else:
-                        print("For val:")
-                        selected_slice_index = input_nonzeros_indexs_series[0]
-                    print("selected nonzero slice index:", selected_slice_index)
-                    # remove this index from nonzero index list
-                    input_nonzeros_indexs_series.remove(selected_slice_index)
-                    print("the non zero index after removing:", input_nonzeros_indexs_series,
-                          len(input_nonzeros_indexs_series))
-
-                    input_data = extract_series(inputSeries)
-                    mask_data  = extract_series(labelSeries)
-                    selected_slice_input =  input_data[:,:, selected_slice_index]
-                    selected_slice_mask = mask_data[:, :, selected_slice_index]
+            # print("True")
+            # if count == 0 and train_flag == "Train":
+            #     np.random.shuffle(ziped_img_mask_list)
+            # images_list, masks_list = zip(*ziped_img_mask_list)
+            # print("------------------------>\n")
+            print("total slices in current case:", non_zero_inputs.shape[-1])
+            print("current case index:", case_count)
+            print("batch index in one epoch:", batch_counter)
+            print("image index in current case:", slice_counter_per_case)
+            print("image index in a batch:", b)
+            temp_img = non_zero_inputs[:, :, slice_counter_per_case]
+            temp_mask = non_zero_masks[:, :, slice_counter_per_case]
+            # standardize:
+            temp_img = (temp_img - input_mean_series)/input_std_series
 
 
-                    # standardize the input image
-                    # standardize:
-                    selected_slice_input = (selected_slice_input - input_mean_list_series) / input_std_list_series
-
-                    # start to encode and decode the polygons
-                    img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(selected_slice_input, selected_slice_mask,
-                                                                                          input_shape, image_datagen,
-                                                                                          mask_datagen,
-
-                                                                                          train_or_test=train_flag)
-                    print("box range [{}, {}]:".format(box.min(), box.max()))
-                    image_data_list.append(img)
-                    # box_data.append(box)
-                    box_data_list.append(box)
-                    mask_data_list.append(aug_mask)
-                    b+=1
-                else:
-                    # remove the entire series
-                    initial_train_targets.remove(selected_zip_series)
-
-                    continue
-
-            else:
-                batch_counter = 0
-                break
-
-
-
+            # ----------------->
+            img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(temp_img, temp_mask,
+                                                                                  input_shape, image_datagen,
+                                                                                  mask_datagen,
+                                                                                  train_or_test=train_flag)
+            # img, box, aug_mask = my_get_random_data(temp_img, temp_mask, input_shape, image_datagen, mask_datagen,
+            #                                         train_or_test=train_flag,
+            #                                         one_case_conter=one_case_conter, case_count=case_count,
+            #                                         case_name=case_name)
+            slice_counter_per_case = (slice_counter_per_case + 1) % non_zero_inputs.shape[-1] # continuously load slices from each case
+            if slice_counter_per_case % non_zero_inputs.shape[-1] == 0:
+                case_count = (case_count +1)% total_num_cases
+            b += 1
 
             # if (one_case_conter + 1) % input_data.shape[-1] == 0:
             #     case_count = (case_count + 1) % total_num_cases
@@ -1908,21 +1893,27 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
             #     continue
             # --------------------->
             # print("total_count after next:", total_count)
-        print("data batch image", len(image_data_list))
-        print("data batch box", len(box_data_list))
-        print("data batch mask", len(mask_data_list))
+
+            image_data_list.append(img)
+            # box_data.append(box)
+            box_data_list.append(box)
+            mask_data_list.append(aug_mask)
+
+        batch_counter = (batch_counter + 1) % total_batches
+        if batch_counter % total_batches == 0:
+            slice_counter_per_case = 0
+            case_count = 0
+
         image_batch = np.array(image_data_list)
         box_batch = np.array(box_data_list)
         mask_batch = np.array(mask_data_list)
         # preprocess the bbox into the regression targets
         y_true = my_preprocess_true_boxes_NPinterp(box_batch, input_shape, anchors, num_classes)
-        # yield [image_batch, *y_true, mask_batch], \
-        #       [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
         yield [image_batch, *y_true, mask_batch], \
-              [np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)),
-               np.zeros(len(image_data_list))]
+              [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
 
-def my_get_random_data(input, mask, full_name, image_datagen, mask_datagen, train_or_test):
+
+def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, train_or_test):
 
     input = np.expand_dims(input,-1)
     input =  np.concatenate([input, input, input], -1)
@@ -1978,7 +1969,7 @@ def my_get_random_data(input, mask, full_name, image_datagen, mask_datagen, trai
 
 
     # encode contours into annotation lines ---->
-    annotation_line, myPolygon = encode_polygone(full_name, selected_coutours)
+    annotation_line, myPolygon = encode_polygone(" ", selected_coutours)
     # decode contours annotation line into distance
     box_data = My_bilinear_decode_annotationlineNP_inter(annotation_line)
 
@@ -2232,9 +2223,9 @@ if __name__ == "__main__":
 
 
         # # T1 LAB PC
-        train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+        # train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         # for laptop
-        # train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+        train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         print("total len of train series:", len(train_total_series))
         # print("total len of val series:", len(val_total_series))
         train_input_series_paths = []
@@ -2253,7 +2244,7 @@ if __name__ == "__main__":
         # warm up ~~~---------------->
         # split train dataset:
         print("splitting the training dataset into train and val")
-        train_rate = 0.9
+        train_rate = 0.01
         # print("raw total series paths:", train_input_series_paths)
         num_train_cases = int(train_rate * len(train_input_series_paths))
         print("splitted num_train_cases:", num_train_cases)
@@ -2262,11 +2253,11 @@ if __name__ == "__main__":
         print("splitted train_input_series # :", len(train_input_series))
         train_mask_series = train_labels_series_paths[:num_train_cases]
         # for val ->
-        # val_input_series = train_input_series_paths[
-        #                    num_train_cases:num_train_cases+1]   # for check purpose only
-        # val_mask_series = train_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
-        val_input_series = train_input_series_paths[num_train_cases:]  ## split training data into real train and validation
-        val_mask_series = train_labels_series_paths[num_train_cases:]
+        val_input_series = train_input_series_paths[
+                           num_train_cases:num_train_cases+1]   # for check purpose only
+        val_mask_series = train_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
+        # val_input_series = train_input_series_paths[num_train_cases:]  ## split training data into real train and validation
+        # val_mask_series = train_labels_series_paths[num_train_cases:]
         print("splitted val_input_series # :", len((val_input_series)))
         # anaylize the training CTs
         print("train series len:", len(train_input_series))
@@ -2284,8 +2275,6 @@ if __name__ == "__main__":
 
 
 
-
-
         num_train = train_nonzeros_slices_num
         num_val = val_nonzeros_slices_num
         print("found nonzero train slices:", num_train)
@@ -2296,7 +2285,8 @@ if __name__ == "__main__":
 
         # for train:
         train_Gen = LungGen(train_input_series, train_mask_series,
-                            train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series,
+                            train_mean_list_series , train_std_list_series, train_nonzeros_indexs_series,
+
                             total_samples= num_train,
                             batch_size=4,
                              input_shape=(512, 512),
@@ -2371,25 +2361,17 @@ if __name__ == "__main__":
         lossWeights = {"ciou_loss": 1, "confidence_loss": 1, "polar_diou_loss": 1, "class_loss": 1,  "mask_Diceloss": 1}
         model.compile(optimizer=Adadelta(0.5), loss=losses, loss_weights=lossWeights)
 
-        epochs = 100
+        epochs = 2
 
         # os.chdir("/simulator_dataset/imgs") # for the simulator image path
-        # model.fit_generator(train_Gen,
-        #           # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-        #           steps_per_epoch=max(1, num_train // batch_size),
-        #           validation_data=val_Gen,
-        #           validation_steps=max(1, num_val // batch_size),
-        #           epochs=epochs,
-        #           initial_epoch=0,
-        #           callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
         model.fit_generator(train_Gen,
-                            # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-                            steps_per_epoch=max(1, math.ceil(num_train/ batch_size)),
-                            validation_data=val_Gen,
-                            validation_steps=max(1, math.ceil(num_val/ batch_size)),
-                            epochs=epochs,
-                            initial_epoch=0,
-                            callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
+                  # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
+                  steps_per_epoch=max(1, num_train // batch_size),
+                  validation_data=val_Gen,
+                  validation_steps=max(1, num_val // batch_size),
+                  epochs=epochs,
+                  initial_epoch=0,
+                  callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
 
 
 
