@@ -4,8 +4,11 @@ import os
 import time
 # need to change
 from glob import glob
-from LungExp1V2_Train import YOLO, \
-    get_anchors, my_get_random_data, NUM_ANGLES, max_boxes #or "import poly_yolo_lite as yolo" for the lite version  ### need to change for different model design
+# from keras.preprocessing import image as krs_images
+from EXP1.LungExp1V2_Train import YOLO, \
+    get_anchors, my_get_random_data, NUM_ANGLES, max_boxes, krs_image #or "import poly_yolo_lite as yolo" for the lite version  ### need to change for different model design
+
+
 import sys
 import nibabel as nib
 
@@ -177,9 +180,9 @@ input_shape = (256, 256)  # multiple of 32, hw
 
 # for the validataion test
 # # T1 LAB PC
-# train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
 # for laptop
-train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
+# train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
 print("total len of train series:", len(train_total_series))
 # print("total len of val series:", len(val_total_series))
 train_input_series_paths = []
@@ -197,7 +200,7 @@ print("total len of total mask series:", len(train_labels_series_paths))
 # warm up ~~~---------------->
 # split train dataset:
 print("splitting the training dataset into train and val")
-train_rate = 0.01
+train_rate  = 0.9
 # print("raw total series paths:", train_input_series_paths)
 num_train_cases = int(train_rate * len(train_input_series_paths))
 print("splitted num_train_cases:", num_train_cases)
@@ -205,11 +208,12 @@ print("splitted num_train_cases:", num_train_cases)
 # train_input_series = train_input_series_paths[:num_train_cases]
 # print("splitted train_input_series # :", len(train_input_series))
 # train_mask_series = train_labels_series_paths[:num_train_cases]
-# for val ->
-val_input_series = train_input_series_paths[num_train_cases: num_train_cases + 1]   # for check purpose only
-val_mask_series = train_labels_series_paths[num_train_cases: num_train_cases + 1]   # for check purpose only
-# val_input_series = train_input_series_paths[num_train_cases:]  ## split training data into real train and validation
-# val_mask_series = train_labels_series_paths[num_train_cases:]
+# # for val ->
+# val_input_series = train_input_series_paths[num_train_cases+1: num_train_cases + 2]   # for check purpose only
+# val_mask_series = train_labels_series_paths[num_train_cases+1: num_train_cases + 2]   # for check purpose only
+val_input_series = train_input_series_paths[num_train_cases:]   # for check purpose only
+val_mask_series = train_labels_series_paths[num_train_cases:]   # for check purpose only
+# #
 print("splitted val_input_series # :", len((val_input_series)))
 # anaylize the training CTs
 # print("train series len:", len(train_input_series))
@@ -242,7 +246,13 @@ total_boxes = 0
 imgs = 0
 fps_list=[]
 input_shape=[512, 512]
+FP= 0
+FP_name = []
+total_nonzeros = 0
 for test_input_series, test_mask_series, test_mean_list_series, test_std_list_series, test_nonzeros_indexs_series in ziped_series_mask_list:
+    casename =  os.path.basename(test_input_series)
+    total_nonzeros+=len(test_nonzeros_indexs_series)
+    print("casename:", casename)
     print("test_input_series:", test_input_series)
     print("test_mask_series:", test_mask_series)
     print("test_mean_list_series:", test_mean_list_series)
@@ -253,16 +263,24 @@ for test_input_series, test_mask_series, test_mean_list_series, test_std_list_se
     print("extracted input shape:", input_data.shape)
     mask_data = extract_series(test_mask_series)
 
-    for each_slice_index in test_nonzeros_indexs_series:
+    # for each_slice_index in test_nonzeros_indexs_series:
+    #     # 2. read the data and random select one index from nonzero index series
+    #     print("For test:")
+    #     # selected_slice_index = test_nonzeros_indexs_series[0]
+    #     print("selected nonzero slice index:", each_slice_index)
+    #
+    #
+    #     selected_slice_input = input_data[:, :, each_slice_index]
+    #     selected_slice_mask = mask_data[:, :, each_slice_index]
+    for slice_index in range(input_data.shape[-1]):  ## all slices in the series
         # 2. read the data and random select one index from nonzero index series
         print("For test:")
         # selected_slice_index = test_nonzeros_indexs_series[0]
-        print("selected nonzero slice index:", each_slice_index)
-
-
-        selected_slice_input = input_data[:, :, each_slice_index]
-        selected_slice_mask = mask_data[:, :, each_slice_index]
-
+        # print("selected nonzero slice index:", each_slice_index)
+        print("selected slice index:", slice_index)
+        full_name = casename +  str(slice_index)
+        selected_slice_input = input_data[:, :, slice_index]
+        selected_slice_mask = mask_data[:, :, slice_index]
         print("selected_slice_input shape::", selected_slice_input.shape)
         print("selected_slice_mask shape:", selected_slice_mask.shape)
         print("selected_slice_input range[{}, {}]:".format( selected_slice_input.min(), selected_slice_input.max()))
@@ -272,15 +290,23 @@ for test_input_series, test_mask_series, test_mean_list_series, test_std_list_se
         # standardize:
         selected_slice_input = (selected_slice_input - test_mean_list_series) / test_std_list_series
 
-        # start to encode and decode the polygons
-        input_img, _, myPolygon, _, annotation_line = my_get_random_data(selected_slice_input, selected_slice_mask,
-                                                                              each_slice_index, None,
-                                                                              None,
-                                                                              train_or_test="Test")
+        if slice_index in test_nonzeros_indexs_series:
+            # start to encode and decode the polygons
+            input_img, _, myPolygon, _, annotation_line = my_get_random_data(selected_slice_input, selected_slice_mask,
+                                                                                  full_name, None,
+                                                                                  None,
+                                                                                  train_or_test="Test")
+            label_out.write(annotation_line)
+            label_out.write("\n")
+
+        else:
+            input_img = np.expand_dims(selected_slice_input, -1)
+            input_img = np.concatenate([input_img, input_img, input_img], -1)
+            input_img = krs_image.img_to_array(input_img)
         # image for plot
 
-        label_out.write(annotation_line)
-        label_out.write("\n")
+        # label_out.write(annotation_line)
+        # label_out.write("\n")
 
         # print("myPolygon:", myPolygon.shape)
         # print("input _img shape:", input_img.shape)
@@ -322,6 +348,12 @@ for test_input_series, test_mask_series, test_mean_list_series, test_std_list_se
         # example, hw to reshape reshape y1,x1,y2,x2 into x1,y1,x2,y2
         if len(box)>0:
             print("there is a box prediction")
+
+        if slice_index not in test_nonzeros_indexs_series and len(box)>0:
+            FP +=1
+            FP_name.append(full_name)
+
+
         for k in range(0, len(box)):
             boxes.append((box[k][1], box[k][0], box[k][3], box[k][2]))
             scores.append(score[k])
@@ -336,58 +368,61 @@ for test_input_series, test_mask_series, test_mean_list_series, test_std_list_se
         if len(boxes) == 0:
             continue
 
-        print("write image path")
-        file.write(str(each_slice_index) + " ")
-        # browse all boxes
-        for b in range(0, len(boxes)):
 
-            # draw box and masks on the raw images:-------->
-            f = translate_color(classes[b])
-            points_to_draw = []
-            offset = len(polygons[b]) // 2  # this = NUM_ANGLES
-            # offset = NUM_ANGLES
-            # filter bounding polygon vertices
-            print("polygons len:", len(polygons[b]))
-            print("offset")
-            for dst in range(0, offset):   # this = NUM_ANGLES LOOP TO GET (X,Y) pairs
-                # if polygons[b][dst + offset] > 0.3:
-                points_to_draw.append([int(polygons[b][dst]), int(polygons[b][dst + offset])])
+        if slice_index in test_nonzeros_indexs_series:
+            file.write(full_name + " ")
+            print("write image path")
+            # browse all boxes
+            for b in range(0, len(boxes)):
 
-            points_to_draw = np.asarray(points_to_draw)
-            points_to_draw = points_to_draw.astype(np.int32)
-            if points_to_draw.shape[0] > 0:
-                cv2.polylines(background, [points_to_draw], True, f, thickness=2)
-                cv2.fillPoly(overlay, [points_to_draw], f)
+                # draw box and masks on the raw images:-------->
+                f = translate_color(classes[b])
+                points_to_draw = []
+                offset = len(polygons[b]) // 2  # this = NUM_ANGLES
+                # offset = NUM_ANGLES
+                # filter bounding polygon vertices
+                print("polygons len:", len(polygons[b]))
+                print("offset")
+                for dst in range(0, offset):   # this = NUM_ANGLES LOOP TO GET (X,Y) pairs
+                    # if polygons[b][dst + offset] > 0.3:
+                    points_to_draw.append([int(polygons[b][dst]), int(polygons[b][dst + offset])])
 
-            # cv2.polylines(img, [myPolygon], True, f, thickness=2)
-            # cv2.fillPoly(overlay, [myPolygon], f)
+                points_to_draw = np.asarray(points_to_draw)
+                points_to_draw = points_to_draw.astype(np.int32)
+                if points_to_draw.shape[0] > 0:
+                    cv2.polylines(background, [points_to_draw], True, f, thickness=2)
+                    cv2.fillPoly(overlay, [points_to_draw], f)
 
-            # write into txt:-------->
-            str_to_write = ''
+                # cv2.polylines(img, [myPolygon], True, f, thickness=2)
+                # cv2.fillPoly(overlay, [myPolygon], f)
 
-            str_to_write += str(float(boxes[b][0])) + "," + str(float(boxes[b][1])) + "," + str(
-                float(boxes[b][2])) + "," + str(float(boxes[b][3])) + ","
-            str_to_write += str(scores[b]) + ","
-            str_to_write += str(int(classes[b]))
+                # write into txt:-------->
+                str_to_write = ''
 
-            offset = len(polygons[b]) // 2  # 72 for 24 vertexes. offset = 24
-            vertices = 0
-            for dst in range(0, len(polygons[b]) // 2):  # 下取整
-                # if polygons[b][dst + offset] > 0.2:
+                str_to_write += str(float(boxes[b][0])) + "," + str(float(boxes[b][1])) + "," + str(
+                    float(boxes[b][2])) + "," + str(float(boxes[b][3])) + ","
+                str_to_write += str(scores[b]) + ","
+                str_to_write += str(int(classes[b]))
 
-                str_to_write += "," + str(float(polygons[b][dst])) + "," + str(float(polygons[b][dst + offset]))
-                vertices += 1
-            str_to_write += " "
-            if vertices < 3:
-                print("No mask found")
-                print('found not correct polygon with ', vertices, ' vertices')
-                continue
-            # print(str_to_write)
-            file.write(str_to_write)
-        file.write("\n")
+                offset = len(polygons[b]) // 2  # 72 for 24 vertexes. offset = 24
+                vertices = 0
+                for dst in range(0, len(polygons[b]) // 2):  # 下取整
+                    # if polygons[b][dst + offset] > 0.2:
 
+                    str_to_write += "," + str(float(polygons[b][dst])) + "," + str(float(polygons[b][dst + offset]))
+                    vertices += 1
+                str_to_write += " "
+                if vertices < 3:
+                    print("No mask found")
+                    print('found not correct polygon with ', vertices, ' vertices')
+                    continue
+                # print(str_to_write)
+                file.write(str_to_write)
+            file.write("\n")
+        else:
+            pass
         img = cv2.addWeighted(overlay, 0.4, background, 1 - 0.4, 0)
-        cv2.imwrite(out_path + str(imgs) + '.jpg', img)
+        cv2.imwrite(out_path + full_name + '.jpg', img)
 file.close()
 label_out.close()
 print('total detected boxes: ', total_boxes)
@@ -396,4 +431,10 @@ print("avg fps:", sum(fps_list)/len(fps_list))
 
 
 with open(FPS_txt, 'a') as f:
-    f.write("saved_model_name {}, num_imgs {}, total_detected_box {}, avg_fps {}, std_fps {}\n".format (saved_model_name, imgs, total_boxes,np.array(fps_list).mean(), np.array(fps_list).std()))
+    f.write("saved_model_name {}, num_imgs {}, num_nonzeros {}, total_detected_box {}, avg_fps {}, std_fps {}\n".format (saved_model_name, imgs, total_nonzeros, total_boxes,np.array(fps_list).mean(), np.array(fps_list).std()))
+    f.write("# of FP:{}\n".format(FP))
+    if len(FP_name)>0:
+        for i in range(len(FP_name)):
+            f.write("FP names:{}\n".format(FP_name[i]))
+    else:
+        f.write("NoFP\n")

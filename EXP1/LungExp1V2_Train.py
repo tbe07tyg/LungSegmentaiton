@@ -1826,8 +1826,10 @@ def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_se
                     selected_slice_input = (selected_slice_input - input_mean_list_series) / input_std_list_series
 
                     # start to encode and decode the polygons
+                    case_name = os.path.basename(inputSeries)
+                    full_name = case_name +  str(selected_slice_index)
                     img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(selected_slice_input, selected_slice_mask,
-                                                                                          input_shape, image_datagen,
+                                                                                          full_name, image_datagen,
                                                                                           mask_datagen,
 
                                                                                           train_or_test=train_flag)
