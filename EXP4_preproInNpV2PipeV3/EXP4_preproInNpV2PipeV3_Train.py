@@ -1779,9 +1779,10 @@ def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag
             print("temp_dict_data:", temp_dict_data)
             # temp_mask_path = data_list[count]
             # each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-            splitted_data =  list(temp_dict_data.keys())[0].split(" ")
-
-            nonzero_index =  list(temp_dict_data.values())[0]
+            # key, value =  list(temp_dict_data)[0].split(" ")
+            splitted_data, nonzero_index  = temp_dict_data
+            splitted_data = splitted_data.split(" ")
+            # splitted_data, nonzero_index =  list(temp_dict_data.values())[0]
             print("splitted_data:", splitted_data)
             print("nonzero index:", nonzero_index)
             # seeds_for_test=random_seeds_list[count] is for the pre-training premilinary
@@ -2084,7 +2085,9 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
     # train_nonzeros_indexs_series = []
     # train_nonzeros_slices_num = 0
     # total_num_batchse=0
-    data_dict = {}
+    Key_list  = []
+    nonzero_list = []
+    # data_dict = {}
     data_list = []
     for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
 
@@ -2114,17 +2117,20 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
                 # non_zeros_indexes.append(i)
                 # train_nonzeros_slices_num += 1
                 key = each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-                value =  i
-                data_dict[key] =  value
-                data_list.append(data_dict)
-                data_dict.clear()
+                # value =  i
+                Key_list.append(key)
+                nonzero_list.append(i)
+
+
             else:
                 pass
+            ziped_list =  zip(Key_list, nonzero_list)
+
         # total_num_batchse += math.ceil(len(non_zeros_indexes)/ batch_size)
         # train_nonzeros_indexs_series.append(non_zeros_indexes)
 
     # CALCULATE total number of batches for each
-    return data_list
+    return list(ziped_list)
 
 
 
