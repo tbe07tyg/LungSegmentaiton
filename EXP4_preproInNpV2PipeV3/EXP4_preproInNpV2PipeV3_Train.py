@@ -2084,6 +2084,7 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
     # train_nonzeros_indexs_series = []
     # train_nonzeros_slices_num = 0
     # total_num_batchse=0
+    data_dict = {}
     data_list = []
     for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
 
@@ -2108,7 +2109,7 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
             # print("each slice mask shape:", temp_mask.shape)
             nonzeros_in_mask = np.count_nonzero(temp_mask)
             if nonzeros_in_mask > 5:
-                data_dict = {}
+
                 # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
                 # non_zeros_indexes.append(i)
                 # train_nonzeros_slices_num += 1
@@ -2116,6 +2117,7 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
                 value =  i
                 data_dict[key] =  value
                 data_list.append(data_dict)
+                data_dict.clear()
             else:
                 pass
         # total_num_batchse += math.ceil(len(non_zeros_indexes)/ batch_size)
@@ -2213,7 +2215,7 @@ if __name__ == "__main__":
         train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         # for laptop
         # train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
-        print("total len of train series:", len(train_total_series))
+        print("total len of labeled series:", len(train_total_series))
         # print("total len of val series:", len(val_total_series))
         total_input_series_paths = []
         total_labels_series_paths = []
