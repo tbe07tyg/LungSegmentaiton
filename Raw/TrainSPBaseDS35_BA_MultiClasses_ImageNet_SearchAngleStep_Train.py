@@ -10,7 +10,7 @@ import os
 import sys
 from functools import reduce
 from functools import wraps
-import nibabel as nib
+
 import math
 import random as rd
 import cv2 as cv
@@ -33,7 +33,7 @@ from keras.regularizers import l2
 from keras.utils import multi_gpu_model
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
 from tensorflow.keras.utils import plot_model
-from MyCustomCallbacks import TrainingPlotCallback, DeleteEarlySavedH5models
+from TonguePlusData.MyCustomCallbacks import TrainingPlotCallback, DeleteEarlySavedH5models
 # os.environ["PATH"] += os.pathsep + 'C:\\Program Files (x86)\\Graphviz2.38\\bin'
 from tensorflow.python.keras.utils.data_utils import Sequence, get_file
 from keras_preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
@@ -44,21 +44,35 @@ from glob import glob
 from keras.preprocessing import image as krs_image
 import cv2
 from keras.applications.xception import Xception
-import matplotlib.pyplot as plt
-import copy
-
+import  json
 import keras
 print("keras version:", keras.__version__)
 np.set_printoptions(precision=3, suppress=True)
 MAX_VERTICES = 1000 #that allows the labels to have 1000 vertices per polygon at max. They are reduced for training
 # ANGLE_STEP  = 14 #that means Poly-YOLO will detect 360/15=24 vertices per polygon at max
-
+# ANGLE_STEP  =  1.8888888888888888
 Ds = 35
-# ANGLE_STEP  =  10.222222222222221 #that means Poly-YOLO will detect 360/15=24 vertices per polygon at max
+
+# load configs from json file
+current_file_dir_path = os.path.dirname(os.path.realpath(__file__))
+config_file_name = "confiObj.json"
+config_path =  os.path.join(current_file_dir_path, config_file_name)
+print("config_path:", config_path)
+with open(config_path) as f:
+    confObj = json.load(f)
+ANGLE_STEP = confObj["angle_step"]
+model_index = confObj["model_index"]
+global_count =  confObj["AS_index"]
+# red configs. from outside files
+# ANGLE_STEP  =  float(sys.argv[2]) #that means Poly-YOLO will detect 360/15=24 vertices per polygon at max
+# model_index =  sys.argv[2]
+
+print("Angle Step:", ANGLE_STEP)
+print("model_index:", model_index)
+print("global_count:", global_count)
 max_boxes = 80
 # NUM_ANGLES3  = int(360 // ANGLE_STEP * 3) #72 = (360/15)*3
 # print("NUM_ANGLES3:", NUM_ANGLES3)
-ANGLE_STEP  =  1.8888888888888888
 NUM_ANGLES  = int(360 // ANGLE_STEP) # 24
 print("ANGLE_STEP:", ANGLE_STEP)
 
@@ -68,28 +82,20 @@ width_shift_range = 0.16666666666666666
 height_shift_range = 0.16666666666666666
 zoom_range = 0.16666666666666666
 shear_range= 0.19444444444444445
-horizontal_flip = True
-brightness_range = [0.6684210526315789, 1.131578947368421]
+horizontal_flip=True
+brightness_range=[0.6684210526315789, 1.131578947368421]
 
 
 grid_size_multiplier = 4 #that is resolution of the output scale compared with input. So it is 1/4
 anchor_mask = [[0,1,2,3,4,5,6,7,8], [0,1,2,3,4,5,6,7,8], [0,1,2,3,4,5,6,7,8]] #that should be optimized
 anchors_per_level = 9 #single scale and nine anchors
 # for running the script
-model_index =  sys.argv[1]
 
+
+# for check random shape binary masks
+root =  "E:\\dataset\\Tongue\\random_shape_multipleMasks"
 # def mish(x):
 #     return x * tf.math.tanh(tf.math.softplus(x))
-def extract_series(series_path):
-    img_obj = nib.load(series_path)
-    # print("series:", img_obj.shape)
-    # print("img.get_data_dtype() == np.dtype(np.int16):", img_obj.get_data_dtype() == np.dtype(np.int16))
-    # print("img.affine.shape:", img_obj.affine.shape)
-    data = img_obj.get_fdata()
-    # print("data in numpy:", data.shape)
-    # print("data in numpy range: [{}, {}]".format(data.min(), data.max()))
-    return data
-
 class Mish(Layer):
     '''
     Mish Activation Function.
@@ -1572,7 +1578,7 @@ class YOLO(object):
         try:
             self.yolo_model = load_model(model_path, compile=False)
         except:
-            self.yolo_model,_ = yolo_body(Input(shape=(512, 512, 3)), anchors_per_level, num_classes)
+            self.yolo_model,_ = yolo_body(Input(shape=(256, 256, 3)), anchors_per_level, num_classes)
             self.yolo_model.load_weights(self.model_path, by_name=True)  # make sure model, anchors and classes match
         else:
             # novy output
@@ -1632,102 +1638,7 @@ class YOLO(object):
     def close_session(self):
         self.sess.close()
 
-# def my_Gnearator(images_list, masks_list, batch_size, input_shape, anchors, num_classes, train_flag):
-#     """
-#     :param images_list:
-#     :param masks_list:
-#     :param batch_size:
-#     :param input_shape:
-#     :param train_flag:  STRING Train or else:
-#     :return:
-#     """
-#     n = len(images_list)
-#     print("total_images:", n)
-#     img_data_gen_args = dict(rotation_range=rotation_range,
-#                              width_shift_range=width_shift_range,
-#                              height_shift_range=height_shift_range,
-#                              zoom_range=zoom_range,
-#                              shear_range=shear_range,
-#                              horizontal_flip=horizontal_flip,
-#                              brightness_range=brightness_range
-#                              )
-#     mask_data_gen_args = dict(rotation_range=rotation_range,
-#                               width_shift_range=width_shift_range,
-#                               height_shift_range=height_shift_range,
-#                               zoom_range=zoom_range,
-#                               shear_range=shear_range,
-#                               horizontal_flip=horizontal_flip
-#                               )
-#     image_datagen = ImageDataGenerator(**img_data_gen_args)
-#     mask_datagen = ImageDataGenerator(**mask_data_gen_args)
-#     count = 0
-#     while True:
-#         image_data_list = []
-#         box_data_list = []
-#         mask_data_list = []
-#         # raw_img_path =[]
-#         # raw_mask_path = []
-#         # # mypolygon_data = []
-#         # my_annotation = []
-#         # print(images_list)
-#         # print(masks_list)
-#         ziped_img_mask_list =  list(zip(images_list, masks_list))
-#         b =0
-#         while  b< batch_size:
-#             # print("True")
-#             if count == 0 and train_flag == "Train":
-#                 np.random.shuffle(ziped_img_mask_list)
-#             images_list, masks_list = zip(*ziped_img_mask_list)
-#
-#             temp_img_path = images_list[count]
-#             temp_mask_path = masks_list[count]
-#             img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(temp_img_path, temp_mask_path, input_shape, image_datagen, mask_datagen,
-#                                           train_or_test=train_flag)
-#
-#             # check the data
-#             # if count+1==n:
-#             #     epoch+=1
-#             # background = np.ones(img.shape)*255
-#
-#             # cv2.imwrite(contours_compare_root + "batch{}_idx{}_2_".format(epoch, count) + 'mask.jpg', aug_mask)
-#             # #
-#             # cv2.drawContours(background, selected_coutours, -1, (60, 180, 75))
-#             # cv2.imwrite(contours_compare_root + "batch{}_idx{}_3_".format(epoch, count) + 'selected_contour.jpg', background)
-#             # cv2.imshow(" ", background)
-#             # cv2.waitKey()  # show on line need divided 255 save into folder should remove keep in 0 to 255
-#             # print("myPolygon.shape:", myPolygon.shape)
-#             # check there is zero: if there is boundry points
-#
-#             # print("myPolygon.shape:", myPolygon.shape)
-#             # # check there is zero: if there is boundry points
-#             #
-#             # print("count before next:", count)
-#             # print("range polygon [{}, {}]".format(myPolygon.min(), myPolygon.max()))
-#             count = (count + 1) % n
-#             b += 1
-#             # print(count)
-#             # if np.any(myPolygon==0) or np.any(myPolygon==aug_image.shape[0]-1) or np.any(myPolygon==aug_image.shape[1]-1):  # roll back.
-#             #
-#             #     print("boundary image")
-#             #     count -=1
-#             #     b-=1
-#             #     continue
-#             print("count after next:", count)
-#             image_data_list.append(img)
-#             # box_data.append(box)
-#             box_data_list.append(box)
-#             mask_data_list.append(aug_mask)
-#
-#         image_batch = np.array(image_data_list)
-#         box_batch = np.array(box_data_list)
-#         mask_batch =  np.array(mask_data_list)
-#         # preprocess the bbox into the regression targets
-#         y_true = my_preprocess_true_boxes_NPinterp(box_batch, input_shape, anchors, num_classes)
-#         yield [image_batch, *y_true, mask_batch], \
-#               [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
-
-
-def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag):
+def my_Gnearator(images_list, masks_list, batch_size, input_shape, anchors, num_classes, train_flag):
     """
     :param images_list:
     :param masks_list:
@@ -1736,21 +1647,16 @@ def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag
     :param train_flag:  STRING Train or else:
     :return:
     """
-    # case_count =0
-    total_num_slices = len(data_list)
-    print("total_num_cases:", total_num_slices)
-    random_seeds_list = range(total_num_slices)
-    # total batches = 0:
-    # total_batches =  total_samples//batch_size
-    # n = total_num_cases * 256
-    # augment generator
+    n = len(images_list)
+    random_seeds_list =  range(n)
+    print("total_images:", n)
     img_data_gen_args = dict(rotation_range=rotation_range,
                              width_shift_range=width_shift_range,
                              height_shift_range=height_shift_range,
                              zoom_range=zoom_range,
                              shear_range=shear_range,
                              horizontal_flip=horizontal_flip,
-                             # brightness_range=brightness_range
+                             brightness_range=brightness_range
                              )
     mask_data_gen_args = dict(rotation_range=rotation_range,
                               width_shift_range=width_shift_range,
@@ -1762,95 +1668,83 @@ def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag
     image_datagen = ImageDataGenerator(**img_data_gen_args)
     mask_datagen = ImageDataGenerator(**mask_data_gen_args)
     count = 0
-
     while True:
         image_data_list = []
         box_data_list = []
         mask_data_list = []
-
-        b = 0
-        while  b < batch_size:
+        # raw_img_path =[]
+        # raw_mask_path = []
+        # # mypolygon_data = []
+        # my_annotation = []
+        # print(images_list)
+        # print(masks_list)
+        ziped_img_mask_list =  list(zip(images_list, masks_list))
+        b =0
+        while  b< batch_size:
             # print("True")
             if count == 0 and train_flag == "Train":
-                print("shuffle!")
-                np.random.shuffle(data_list)
-            # images_list, masks_list = zip(*ziped_img_mask_list)
+                np.random.shuffle(ziped_img_mask_list)
+            images_list, masks_list = zip(*ziped_img_mask_list)
 
-            temp_dict_data = data_list[count]
-            print("temp_dict_data:", temp_dict_data)
-            # temp_mask_path = data_list[count]
-            # each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-            # key, value =  list(temp_dict_data)[0].split(" ")
-            splitted_data, nonzero_index  = temp_dict_data
-            splitted_data = splitted_data.split(" ")
-            # splitted_data, nonzero_index =  list(temp_dict_data.values())[0]
-            print("splitted_data:", splitted_data)
-            print("nonzero index:", nonzero_index)
-            # seeds_for_test=random_seeds_list[count] is for the pre-training premilinary
-            img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(splitted_data[0], splitted_data[1],  nonzero_index,
-                                                                                  float(splitted_data[2]), float(splitted_data[3]),
-                                                                                  image_datagen, mask_datagen,
-                                                                                  train_or_test=train_flag)
+            temp_img_path = images_list[count]
+            temp_mask_path = masks_list[count]
+            img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(temp_img_path, temp_mask_path, input_shape, image_datagen, mask_datagen,
+                                          train_or_test=train_flag, seeds_for_test=random_seeds_list[count])
 
+            # check the data
+            # if count+1==n:
+            #     epoch+=1
+            # background = np.ones(img.shape)*255
 
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_2_".format(epoch, count) + 'mask.jpg', aug_mask)
+            # #
+            # cv2.drawContours(background, selected_coutours, -1, (60, 180, 75))
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_3_".format(epoch, count) + 'selected_contour.jpg', background)
+            # cv2.imshow(" ", background)
+            # cv2.waitKey()  # show on line need divided 255 save into folder should remove keep in 0 to 255
+            # print("myPolygon.shape:", myPolygon.shape)
+            # check there is zero: if there is boundry points
 
-            print("box range [{}, {}]:".format(box.min(), box.max()))
-
-
-            count = (count + 1) % total_num_slices
-            b+=1
-
+            # print("myPolygon.shape:", myPolygon.shape)
+            # # check there is zero: if there is boundry points
+            #
+            # print("count before next:", count)
+            # print("range polygon [{}, {}]".format(myPolygon.min(), myPolygon.max()))
+            count = (count + 1) % n
+            b += 1
+            # print(count)
+            # if np.any(myPolygon==0) or np.any(myPolygon==aug_image.shape[0]-1) or np.any(myPolygon==aug_image.shape[1]-1):  # roll back.
+            #
+            #     print("boundary image")
+            #     count -=1
+            #     b-=1
+            #     continue
+            print("count after next:", count)
             image_data_list.append(img)
             # box_data.append(box)
             box_data_list.append(box)
             mask_data_list.append(aug_mask)
-            print("count after next:", count)
-        print("data batch image", len(image_data_list))
-        print("data batch box", len(box_data_list))
-        print("data batch mask", len(mask_data_list))
+
         image_batch = np.array(image_data_list)
         box_batch = np.array(box_data_list)
-        mask_batch = np.array(mask_data_list)
+        mask_batch =  np.array(mask_data_list)
         # preprocess the bbox into the regression targets
         y_true = my_preprocess_true_boxes_NPinterp(box_batch, input_shape, anchors, num_classes)
-        # yield [image_batch, *y_true, mask_batch], \
-        #       [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
         yield [image_batch, *y_true, mask_batch], \
-              [np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)),
-               np.zeros(len(image_data_list))]
+              [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
 
-def linear_norm(x, mi, ma):
-    return (x-mi)/(ma-mi)
 
-def normalize(volume,min,max):
-    """Normalize the volume"""
-    # min = -1000
-    # max = 400
-    volume[volume < min] = min
-    volume[volume > max] = max
-    volume = (volume - min) / (max - min)
-    volume = volume.astype("float32")
-    return volume
-
-def my_get_random_data(input_path, mask_path, nonzero_index, input_mean_list_series, input_std_list_series,
-                       image_datagen, mask_datagen, train_or_test):
-    # read data
-    input_data = extract_series(input_path)
-    mask_data = extract_series(mask_path)
-    input = input_data[:, :, nonzero_index]
-    mask = mask_data[:, :, nonzero_index]
-    input = np.expand_dims(input, -1)
-
+def my_get_random_data(img_path, mask_path, input_shape, image_datagen, mask_datagen, train_or_test, seeds_for_test=None):
     # load data ------------------------>
     # image_name = os.path.basename(img_path).replace('.JPG', '')
     # mask_name = os.path.basename(mask_path).replace('.JPG', '')
     # print("img name:", image_name)
     # print("mask name:", mask_name)
-    # image = krs_image.load_img(img_path, target_size=(input_shape[0], input_shape[1]))
-    # mask = krs_image.load_img(mask_path, grayscale=True, target_size=(input_shape[0], input_shape[1]))
-    input = krs_image.img_to_array(input)
+    image = krs_image.load_img(img_path, target_size=(input_shape[0], input_shape[1]))
+    mask = krs_image.load_img(mask_path, grayscale=True, target_size=(input_shape[0], input_shape[1]))
+    image = krs_image.img_to_array(image)
     mask = krs_image.img_to_array(mask)
-    # input = np.expand_dims(input, 0)
+    # image = np.expand_dims(image, 0)
     # mask = np.expand_dims(mask, 0)
     # print("img shape before aug:", image.shape)
     # print("mask shape before aug:", mask.shape)
@@ -1859,79 +1753,101 @@ def my_get_random_data(input_path, mask_path, nonzero_index, input_mean_list_ser
         # print("train aug")
         seed = np.random.randint(0, 2147483647)
         print("aug_seed:", seed)
-        print("input shape:", input.shape)
-        print("mask shape:", mask.shape)
-        aug_image = image_datagen.random_transform(input, seed=seed)
+        aug_image = image_datagen.random_transform(image, seed=seed)
 
         aug_mask = mask_datagen.random_transform(mask, seed=seed)
 
         copy_mask = aug_mask.copy().astype(np.uint8)
-        print("aug_image_range:[{}, {}]".format(aug_image.min(), aug_image.max()))
-        print("copy_mask_range:[{}, {}]".format(copy_mask.min(), copy_mask.max()))
+        img, label = random_shapes((256, 256), max_shapes=10, min_size=20, max_size=180, intensity_range=((0, 255),))
     else:
         # print("Test no aug")
-        aug_image = input
+        aug_image = image
         copy_mask = mask.copy().astype(np.uint8)
+        print("seeds_for_test:", seeds_for_test)
+        img, label = random_shapes((256, 256), max_shapes=10, min_size=20,  max_size=180, intensity_range=((0, 255),), random_seed=seeds_for_test)
+    # img, label = random_shapes((256, 256), min_size=40, intensity_range=((0, 255),), random_seed=pri_seed)
+    # print("random shape labels:", label)
+    added_img = 255 - img
+    gray = cv2.cvtColor(added_img, cv2.COLOR_BGR2GRAY)
+    # print("labels:", label)
 
-    # print("mask shape after aug:", np.squeeze(aug_mask).shape)
-    # aug_image = krs_image.img_to_array(aug_image)
-    # aug_mask = krs_image.img_to_array(aug_mask)
-    # find polygons with augmask ------------------------------------>
-    # imgray = cv2.cvtColor(np.squeeze(copy_mask), cv2.COLOR_BGR2GRAY)
-    # print(copy_mask)
+    # aug_image =  added_img
+    aug_image = aug_image / 2 + added_img
+    ret, thresh = cv2.threshold(gray, 0.00001, 255, 0)  # this require the numpy array has to be the uint8 type
+    aug_mask = thresh
+
+
     # ret, thresh = cv2.threshold(copy_mask, 127, 255, 0)  # this require the numpy array has to be the uint8 type
-    ret, thresh = cv2.threshold(copy_mask, 0.5, 1, 0)  # this require the numpy array has to be the uint8 type
-    aug_mask =thresh
     image, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     selected_coutours = []
     for x in range(len(contours)):
         # print("countour x:", x, contours[x].shape)
-        if contours[x].shape[0] > 20:  # require one contour at lest 8 polygons(360/40=9)
+        if contours[x].shape[0] > 8:  # require one contour at lest 8 polygons(360/40=9)
             selected_coutours.append(contours[x])
     # print("# selected_coutours:", len(selected_coutours))
 
 
-    full_name = input_path+str(nonzero_index)
+
     # encode contours into annotation lines ---->
-    annotation_line, myPolygon = encode_polygone(full_name, selected_coutours)
+    annotation_line, my_poly_list, all_masks = encode_polygone(img_path, selected_coutours, label, input_shape)
+
+    ## all back backgound
+    # GT_MASK = np.zeros([input_shape[0], input_shape[1]])
+    # Generate binary masks for each objects ---------------->
+    # for i, each_polygons in enumerate(my_poly_list):
+    #     print("each_polygons.shape:", each_polygons.shape)
+    #
+    # # check the generate input and classes masks------------------------->
+    # cv2.imwrite(root + "/{}_input".format(image_name) + '.jpg', aug_image)
+    # for i in range(all_masks.shape[-1]):
+    #     cv2.imwrite(root + "/{}_{}".format(image_name, i) + '.jpg', all_masks[:,:,i])
+    #     print("mask:range:",GT_MASK.min(), GT_MASK.max())
+    # print("my_poly_list:", my_poly_list)
     # decode contours annotation line into distance
     box_data = My_bilinear_decode_annotationlineNP_inter(annotation_line)
 
     # normal the image ----------------->
-    # aug_image = aug_image / 255.0
-    # aug_mask = aug_mask / 255.0
-
-
-    # normalization
-    # win1  : window [-3000, 1700]
-    LB1, UB1 = -3000, 1700
-    input1= normalize(aug_image,LB1,UB1)
-    print("input1 range: [{}, {}]".format(input1.min(), input1.max()))
-    # win2  : window  [-1400 500]
-    LB2, UB2 = -1400, 500
-    input2 = normalize(aug_image, LB2, UB2)
-
-    print("input2 range: [{}, {}]".format(input2.min(), input2.max()))
-    # std :
-    # standardize:
-    inputstd = (aug_image - input_mean_list_series) / input_std_list_series
-
-    final_input =  np.concatenate([input1, input2, inputstd], axis=-1)
-    print("inputstd range: [{}, {}]".format(inputstd.min(), inputstd.max()))
-    # final input with 3 channels
-    aug_mask = aug_mask
-    print("aug_mask range: [{}, {}]".format(aug_mask.min(), aug_mask.max()))
-    aug_mask =  np.expand_dims(aug_mask, -1)  # since in our case ,we only have one class, if multiple classes binary labels concate at the last dimension
+    aug_image = aug_image / 255.0
+    aug_mask = all_masks / 255.0
+    # aug_mask =  np.expand_dims(aug_mask, -1)  # since in our case ,we only have one class, if multiple classes binary labels concate at the last dimension
     # print("aug_mask.shape:", aug_mask.shape)
-    return final_input, box_data, myPolygon, aug_mask, annotation_line
+    return aug_image, box_data, my_poly_list, aug_mask, annotation_line
 
-def encode_polygone(img_path, contours, MAX_VERTICES =1000):
+def check_randomShape_cls(cls):
+    class_mapping = {'rectangle': 0,
+                     'triangle': 1,
+                     'circle': 2,
+                     'ellipse': 3
+                     }
+    if cls in class_mapping.keys():
+        return class_mapping[cls]
+    else:
+        return None
+
+
+def encode_polygone(img_path, contours, label, input_shape,MAX_VERTICES =1000):
     "give polygons and encode as angle, ditance , probability"
+    # print("random shape labels:", label)
     skipped = 0
     polygons_line = ''
     c = 0
     my_poly_list =[]
+
+    # Generate masks for each cls
+    GT_MASK0 = np.zeros([input_shape[0], input_shape[1]])
+    GT_MASK1 = np.zeros([input_shape[0], input_shape[1]])
+    GT_MASK2 = np.zeros([input_shape[0], input_shape[1]])
+    GT_MASK3 = np.zeros([input_shape[0], input_shape[1]])
+
+    # for i, each_polygons in enumerate(my_poly_list):
+    #     print("each_polygons.shape:", each_polygons.shape)
+    #
+    #     cv2.fillPoly(GT_MASK, np.int32([each_polygons]), color=(255))
+    #     cv2.imwrite(root + "/{}_input".format(image_name) + '.jpg', aug_image)
+    #     cv2.imwrite(root + "/{}_{}".format(image_name, i) + '.jpg', GT_MASK*255)
+    #     print("mask:range:",GT_MASK.min(), GT_MASK.max())
     for obj in contours:
+
         # print(obj.shape)
         myPolygon = obj.reshape([-1, 2])
         # print("mypolygon:", myPolygon.shape)
@@ -1958,14 +1874,55 @@ def encode_polygone(img_path, contours, MAX_VERTICES =1000):
         if max_x - min_x <= 1.0 or max_y - min_y <= 1.0:
             skipped += 1
             continue
+        for i, each in enumerate(label): # for each object search one time
+            str_cls = each[0]
+            bbox = each[1]
+            label_p1 =  bbox[0]
+            # label_p2 =  bbox[1]
+            # print(str_cls)
+            # print("label:", label_p1, label_p2)
+            # calculate distance of bbox
+            obj_p1 = (min_y, max_y)
+            # obj_p2 = (min_x, max_x)
+            # print("found:", obj_p1, obj_p2)
+            # pointx = (min_x, max_x)
+            # print(label_p1- obj_p1)
+            d1 = np.sqrt(np.power(label_p1[0]-obj_p1[0], 2) + np.power(label_p1[1]-obj_p1[1], 2))
+            # print(d1)
+            if d1 < 2:
+                c = str_cls
+                # print("found cls:", c)
 
+                # get cls number according to c
+                c =  check_randomShape_cls(c)
+                # print("final cls:", c)
+                if c==0:
+                    cv2.fillPoly(GT_MASK0, np.int32([myPolygon]), color=(255))
+                elif c==1:
+                    cv2.fillPoly(GT_MASK1, np.int32([myPolygon]), color=(255))
+                elif c==2:
+                    cv2.fillPoly(GT_MASK2, np.int32([myPolygon]), color=(255))
+                else :
+                    cv2.fillPoly(GT_MASK3, np.int32([myPolygon]), color=(255))
+
+            # d1 = np.sqrt
+            # print("d:", d)
+            # pointy= ()
+        # print("min_x, min_y, max_x, max_y:", min_x, min_y, max_x, max_y)
         polygons_line += ' {},{},{},{},{}'.format(min_x, min_y, max_x, max_y, c) + polygon_line
 
+
+    GT_MASK0 = np.expand_dims(GT_MASK0, -1)
+    GT_MASK1 = np.expand_dims(GT_MASK1, -1)
+    GT_MASK2 = np.expand_dims(GT_MASK2, -1)
+    GT_MASK3 = np.expand_dims(GT_MASK3, -1)
+    all_masks = np.concatenate([GT_MASK0, GT_MASK1, GT_MASK2, GT_MASK3], -1)
+    # print("all_masks shape:", all_masks.shape)
     annotation_line = img_path + polygons_line
 
-    return annotation_line, my_poly_list
+    return annotation_line, my_poly_list, all_masks
 
-def My_bilinear_decode_annotationlineNP_inter(encoded_annotationline, MAX_VERTICES=5000, max_boxes=80):
+def My_bilinear_decode_annotationlineNP_inter(encoded_annotationline, MAX_VERTICES=1000, max_boxes=80):
     """
     :param encoded_annotationline: string for lines of img_path and objects c and its contours
     :return: box_data(min_x, min_y, max_x, max_y, c, dists1.dist2...) shape(b, NUM_ANGLE+5)
@@ -2050,98 +2007,6 @@ def get_anchors(anchors_path):
     anchors = [float(x) for x in anchors.split(',')]
     return np.array(anchors).reshape(-1, 2)
 
-def warm_up_func(train_input_series, train_mask_series, batch_size):
-    train_mean_list_series = []
-    train_std_list_series = []
-    train_nonzeros_indexs_series = []
-    train_nonzeros_slices_num = 0
-    total_num_batchse=0
-    for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
-
-        non_zeros_indexes = []
-
-        data_input = extract_series(each_input_series)
-        print("data input range [{}, {}]".format(data_input.min(), data_input.max()))
-        data_mask = extract_series(each_mask_series)
-        print("data mask range [{}, {}]".format(data_mask.min(), data_mask.max()))
-        each_v = data_input.reshape([-1])
-        print("each_v shape:", each_v.shape)
-        each_data_mean = np.mean(each_v, axis=0)
-        each_data_std = np.std(each_v, axis=0)
-        train_mean_list_series.append(each_data_mean)
-        train_std_list_series.append(each_data_std)
-        print("each train series data shape:", data_input.shape)
-
-        assert data_input.shape[-1] == data_mask.shape[-1]
-        for i in range(data_mask.shape[-1]):
-            temp_mask = data_mask[:, :, i]
-            # print("each slice mask shape:", temp_mask.shape)
-            nonzeros_in_mask = np.count_nonzero(temp_mask)
-            if nonzeros_in_mask > 5:
-                # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
-                non_zeros_indexes.append(i)
-                train_nonzeros_slices_num += 1
-
-            else:
-                pass
-        total_num_batchse += math.ceil(len(non_zeros_indexes)/ batch_size)
-        train_nonzeros_indexs_series.append(non_zeros_indexes)
-
-    # CALCULATE total number of batches for each
-    return train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, total_num_batchse
-
-def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
-    # train_mean_list_series = []
-    # train_std_list_series = []
-    # train_nonzeros_indexs_series = []
-    # train_nonzeros_slices_num = 0
-    # total_num_batchse=0
-    Key_list  = []
-    nonzero_list = []
-    # data_dict = {}
-    data_list = []
-    for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
-
-        non_zeros_indexes = []
-
-        data_input = extract_series(each_input_series)
-        print("data input range [{}, {}]".format(data_input.min(), data_input.max()))
-        data_mask = extract_series(each_mask_series)
-        print("data mask range [{}, {}]".format(data_mask.min(), data_mask.max()))
-        each_v = data_input.reshape([-1])
-        print("each_v shape:", each_v.shape)
-        each_data_mean = np.mean(each_v, axis=0)
-        each_data_std = np.std(each_v, axis=0)
-        # train_mean_list_series.append(each_data_mean)
-        # train_std_list_series.append(each_data_std)
-        print("each train series data shape:", data_input.shape)
-
-        assert data_input.shape[-1] == data_mask.shape[-1]
-        for i in range(data_mask.shape[-1]):
-
-            temp_mask = data_mask[:, :, i]
-            # print("each slice mask shape:", temp_mask.shape)
-            nonzeros_in_mask = np.count_nonzero(temp_mask)
-            if nonzeros_in_mask > 5:
-
-                # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
-                # non_zeros_indexes.append(i)
-                # train_nonzeros_slices_num += 1
-                key = each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-                # value =  i
-                Key_list.append(key)
-                nonzero_list.append(i)
-
-
-            else:
-                pass
-    ziped_list =  zip(Key_list, nonzero_list)
-
-
-    return list(ziped_list)
-
-
-
 if __name__ == "__main__":
 
     """
@@ -2151,11 +2016,9 @@ if __name__ == "__main__":
 
     def _main():
 
-        bs =4 # batch size
-        project_name = 'LungEXP4_preproInNp_DS{}_{}_{:.2f}'.format(Ds,model_index, ANGLE_STEP)
+        project_name = 'AS{}\\TrSPbase_IM_BA_DS{}_MultiCls_{}_AS{:.2f}'.format(global_count,Ds,model_index, ANGLE_STEP)
         pretrained_model_name ='ep042-loss11.430-val_loss3.604.h5'
         phase = 1
-
         print("current working dir:", os.getcwd())
         cwd =  os.getcwd()
         # os.chdir("E:\\Projects\\poly-yolo\\simulator_dataset")
@@ -2170,40 +2033,34 @@ if __name__ == "__main__":
 
         # log_dir = (current_file_dir_path + '/TongueModelsTang256x256_0.5lr_AngleStep{}_TonguePlus/').format(ANGLE_STEP)
         log_dir = current_file_dir_path + '/'+ project_name  +'/'
-        pre_trained_dir = current_file_dir_path + '/'+ "PretrainedModel/"
-        plot_folder = log_dir + 'Plots/'
+
+        # plot_folder = log_dir + 'Plots/'
         tf_folder = os.path.join(current_file_dir_path, project_name, 'TF_logs')
 
-        if not os.path.exists(plot_folder):
-            os.makedirs(plot_folder)
+
+
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         if not os.path.exists(tf_folder):
             os.makedirs(tf_folder)
-
-        if not os.path.exists(pre_trained_dir):
-            os.makedirs(pre_trained_dir)
 
 
 
         classes_path = current_file_dir_path+'/yolo_classesTongue.txt'
         anchors_path = current_file_dir_path+'/yolo_anchorsTongue.txt'
         class_names = get_classes(classes_path)
+        print(classes_path)
         num_classes = len(class_names)
         anchors = get_anchors(anchors_path)  # shape [# of anchors, 2]
 
         # input_shape = (416,832) # multiple of 32, hw
-        input_shape = (512, 512) # multiple of 32, hw
+        input_shape = (256, 256) # multiple of 32, hw
 
         if phase == 1:
             model = create_model(input_shape, anchors, num_classes, load_pretrained=False)
         else:
-            print("use pretrained weights-")
-            # print("pretrained name: ", pretrained_model_name)
-            # model = create_model(input_shape, anchors, num_classes, load_pretrained=True,
-            #                      weights_path=pre_trained_dir+'ep082-loss28.085-val_loss7.449.h5')
-            model = create_model(input_shape, anchors, num_classes, load_pretrained=True,
-                                 weights_path=pre_trained_dir + pretrained_model_name)
+            model = create_model(input_shape, anchors, num_classes, load_pretrained=True, weights_path=log_dir+'poly_yolo.h5')
+
         print(model.summary())
 
         # "plot and save model"
@@ -2215,7 +2072,7 @@ if __name__ == "__main__":
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, verbose=1, delta=0.03)
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
         # custom callback
-        plotCallBack = TrainingPlotCallback(save_path= plot_folder)
+        # plotCallBack = TrainingPlotCallback(save_path= plot_folder)
         # delete old h5 cashes:
         deleteOldH5 =  DeleteEarlySavedH5models(modelSavedPath = log_dir)
         TensorBoardcallback = tf.keras.callbacks.TensorBoard(log_dir=tf_folder,
@@ -2223,118 +2080,40 @@ if __name__ == "__main__":
                                                              embeddings_freq=0, embeddings_layer_names=None,
                                                              embeddings_metadata=None)
 
-
-
-        # # T1 LAB PC
-        # train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
-        # for laptop
-        train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
-        print("total len of labeled series:", len(train_total_series))
-        # print("total len of val series:", len(val_total_series))
-        total_input_series_paths = []
-        total_labels_series_paths = []
-        for each_train_path in train_total_series:  # find input and label
-            # print(each_train_path)
-            if "seg" in each_train_path:
-                total_labels_series_paths.append(each_train_path)
-            else:
-                total_input_series_paths.append(each_train_path)
-
-        print("total len of total input series:", len(total_input_series_paths))
-        print("total len of total mask series:", len(total_labels_series_paths))
-
-
-        # warm up ~~~---------------->
-        # split train dataset:
-        print("splitting the training dataset into train and val")
-        train_rate = 0.8
-
-        val_rate = 0.5 # half of the remainning
-        # print("raw total series paths:", train_input_series_paths)
-        num_train_cases = int(train_rate * len(total_input_series_paths))
-        print("splitted num_train_cases:", num_train_cases)
-
-        # num_val_cases = int(val_rate * len(train_input_series_paths))
-        # print("splitted num_train_cases:", num_train_cases)
-
-        # for train ->
-        # train_input_series = total_input_series_paths[:num_train_cases]
-        # print("splitted train_input_series # :", len(train_input_series))
-        # train_mask_series = total_labels_series_paths[:num_train_cases]
-
-        train_input_series = total_input_series_paths[0:1]
-        print("splitted train_input_series # :", len(train_input_series))
-        train_mask_series = total_labels_series_paths[0:1]
-        # for val ->
-        # val_input_series = total_input_series_paths[
-        #                    num_train_cases:num_train_cases+1]   # for check purpose only
-        # val_mask_series = total_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
-        remaining_input_series = total_input_series_paths[num_train_cases:]  ## split training data into real train and validation
-        remaining_mask_series = total_labels_series_paths[num_train_cases:]
-
-        num_val_cases = int(val_rate * len(remaining_input_series))
-        val_input_series = remaining_input_series[:num_val_cases]
-        print("splitted val_input_series # :", len(val_input_series))
-        val_mask_series = remaining_mask_series[:num_val_cases]
-        # # for test ->
-        # test_input_series = remaining_input_series[num_val_cases:]
-        # print("splitted test_input_series # :", len(test_input_series))
-        # test_mask_series = remaining_mask_series[num_val_cases:]
-
-        # # for the laptop:
-        val_input_series = remaining_input_series[0:1]
-        print("splitted val_input_series # :", len(train_input_series))
-        val_mask_series = remaining_mask_series[0:1]
-
-        # # for test ->
-        test_input_series = remaining_input_series[num_val_cases:]
-        # print("splitted test_input_series # :", len(test_input_series))
-        test_mask_series = remaining_mask_series[num_val_cases:]
-
-        # anaylize the training CTs
-        print("train series len:", len(train_input_series))
-        print("val series len:", len(val_input_series))
-        print("test series len:", len(test_input_series))
-        # warm up for training needed
-
-        print("train warm up ---------------------------->")
-        # for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
-        train_data_list= \
-            warm_up_funcV2(train_input_series, train_mask_series, batch_size=bs)
-
-        val_data_list = \
-            warm_up_funcV2(val_input_series, val_mask_series, batch_size=bs)
-
-
-        print("found nonzero slice:", train_data_list)
-        print("found train nonzero slices:", len(train_data_list))
-        print("found val nonzero slices:", len(val_data_list))
-
-        # # num_train = train_num_batches
-        # # # num_val = val_num_batches
-        # print("found nonzero train batches:", train_num_batches)
-        # print("found nonzero val batches:", val_num_batches)
+        # # for my data generator
+        # # # # for train dataset
+        # train_input_paths = glob('E:\\dataset\\Tongue\\tongue_dataset_tang_plus\\backup\\inputs\\Tongue/*')
+        # train_mask_paths = glob('E:\\dataset\\Tongue\\tongue_dataset_tang_plus\\backup\\binary_labels\\Tongue/*.jpg')
+        # print("len of train imgs:", len(train_input_paths))
         #
-        #
-        # # create data_generator
-        #
-        # # for train:
-        train_Gen = LungGen(train_data_list,
-                            batch_size=bs,
-                             input_shape=(512, 512),
-                             anchors=anchors, num_classes=num_classes,
-                             train_flag="Train")
-        val_Gen = LungGen(val_data_list,
-                          batch_size=bs,
-                           input_shape=(512,512),
-                           anchors=anchors, num_classes=num_classes,
-                           train_flag="test")
-        num_train = int(len(train_data_list))
-        num_val = len(val_data_list)
+        # assert len(train_input_paths) == len(train_mask_paths), "train imgs and mask are not the same"
+        # # for validation dataset  # we need or label and masks are the same shape
+        # val_input_paths = glob('E:\\dataset\\Tongue\\mytonguePolyYolo\\test\\test_inputs/*')
+        # val_mask_paths = glob('E:\\dataset\\Tongue\\mytonguePolyYolo\\test\\testLabel\\label512640/*.jpg')
+        # assert len(val_input_paths) == len(val_mask_paths), "val imgs and mask are not the same"
 
-        batch_size = 4  # decrease/increase batch size according to your memory of your GPU
-        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
+        # # # # # # # # # # for train dataset for the lab
+        # # # # # # # # # # # # for train dataset for the lab
+        train_input_paths = glob('C:\\MyProjects\\data\\tonguePoly\\train\\input/*')
+        train_mask_paths = glob('C:\\MyProjects\\data\\tonguePoly\\train\\label/*.jpg')
+        print("len of train imgs:", len(train_input_paths))
 
+        assert len(train_input_paths) == len(train_mask_paths), "train imgs and mask are not the same"
+        # for validation dataset  # we need or label and masks are the same shape
+        val_input_paths = glob('C:\\MyProjects\\data\\tonguePoly\\test\\input/*')
+        val_mask_paths = glob('C:\\MyProjects\\data\\tonguePoly\\test\\label/*.jpg')
+        assert len(val_input_paths) == len(val_mask_paths), "val imgs and mask are not the same"
+
+        print("total {} training samples read".format(len(train_input_paths)))
+        print("total {} val samples read".format(len(val_input_paths)))
+        # create data_generator
+        # for train:
+        train_Gen = my_Gnearator(train_input_paths, train_mask_paths, batch_size=4, input_shape=[256, 256],
+                                   anchors= anchors, num_classes=num_classes,
+                                     train_flag="Train")
+        val_Gen = my_Gnearator(val_input_paths, val_mask_paths, batch_size=4, input_shape=[256, 256],
+                                   anchors= anchors, num_classes=num_classes,
+                                   train_flag="test")
 
 
         # with open(annotation_path) as f:
@@ -2362,11 +2141,12 @@ if __name__ == "__main__":
         #         for symbol in range(lines_val[i][element].count(',') - 4, MAX_VERTICES * 2, 2):
         #             lines_val[i][element] = lines_val[i][element] + ',0,0'
 
+        num_val = int(len(val_input_paths))
+        num_train = len(train_input_paths)
 
 
-
-        # batch_size = 4 # decrease/increase batch size according to your memory of your GPU
-        # print('Train on {} batches, val on {} batches, with batch size {}.'.format(train_num_batches, val_num_batches, bs))
+        batch_size = 4 # decrease/increase batch size according to your memory of your GPU
+        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
 
 
         """
@@ -2401,22 +2181,14 @@ if __name__ == "__main__":
         epochs = 100
 
         # os.chdir("/simulator_dataset/imgs") # for the simulator image path
-        # model.fit_generator(train_Gen,
-        #           # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-        #           steps_per_epoch=max(1, num_train // batch_size),
-        #           validation_data=val_Gen,
-        #           validation_steps=max(1, num_val // batch_size),
-        #           epochs=epochs,
-        #           initial_epoch=0,
-        #           callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
         model.fit_generator(train_Gen,
-                            # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-                            steps_per_epoch=max(1, num_train // batch_size),
-                            validation_data=val_Gen,
-                            validation_steps=max(1, num_val // batch_size),
-                            epochs=epochs,
-                            initial_epoch=0,
-                            callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
+                  # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
+                  steps_per_epoch=max(1, num_train // batch_size),
+                  validation_data=val_Gen,
+                  validation_steps=max(1, num_val // batch_size),
+                  epochs=epochs,
+                  initial_epoch=0,
+                  callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
 
 
 
@@ -2435,22 +2207,20 @@ if __name__ == "__main__":
                      weights_path='model_data/yolo_weights.h5'):
         """create the training model"""
         K.clear_session()  # get a new session
-        image_input = Input(shape=(512, 512, 3))
+        image_input = Input(shape=(256, 256, 3))
         h, w = input_shape
         num_anchors = len(anchors)
         # CODE CHANGED FOR MY NP INTERP
         y_true = Input(shape=(h // grid_size_multiplier, w // grid_size_multiplier, anchors_per_level, num_classes + 5 + NUM_ANGLES))
-        y_true_mask = Input(shape=(512, 512, num_classes))
+        y_true_mask = Input(shape=(256, 256, num_classes))
         print("anchors_per_level:", anchors_per_level)
         print("num_classes:", num_classes)
         model_body, Model_mask = yolo_body(image_input, anchors_per_level, num_classes)
-        print("model_body.inputs:", model_body.inputs)
         print("model_body.output.shape",model_body.outputs)
         print("Model_mask.output.shape", Model_mask.outputs)
         print('Create Poly-YOLO model with {} anchors and {} classes.'.format(num_anchors, num_classes))
 
         if load_pretrained:
-            # model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
             model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
             print('Load weights {}.'.format(weights_path))
 

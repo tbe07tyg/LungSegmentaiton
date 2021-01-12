@@ -45,7 +45,6 @@ from keras.preprocessing import image as krs_image
 import cv2
 from keras.applications.xception import Xception
 import matplotlib.pyplot as plt
-import copy
 
 import keras
 print("keras version:", keras.__version__)
@@ -1727,7 +1726,7 @@ class YOLO(object):
 #               [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
 
 
-def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag):
+def LungGen(inputSeries, labelSeries, input_mean_list_series , input_std_list_series, input_nonzeros_indexs_series, total_samples, batch_size, input_shape, anchors, num_classes, train_flag):
     """
     :param images_list:
     :param masks_list:
@@ -1736,12 +1735,12 @@ def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag
     :param train_flag:  STRING Train or else:
     :return:
     """
-    # case_count =0
-    total_num_slices = len(data_list)
-    print("total_num_cases:", total_num_slices)
-    random_seeds_list = range(total_num_slices)
+    case_count =0
+    total_num_cases = len(labelSeries)
+    print("total_num_cases:", total_num_cases)
+
     # total batches = 0:
-    # total_batches =  total_samples//batch_size
+    total_batches =  total_samples//batch_size
     # n = total_num_cases * 256
     # augment generator
     img_data_gen_args = dict(rotation_range=rotation_range,
@@ -1761,86 +1760,163 @@ def LungGen(data_list, batch_size, input_shape, anchors, num_classes, train_flag
                               )
     image_datagen = ImageDataGenerator(**img_data_gen_args)
     mask_datagen = ImageDataGenerator(**mask_data_gen_args)
-    count = 0
 
+    ziped_series_mask_list = list(zip(inputSeries, labelSeries,
+                                      input_mean_list_series, input_std_list_series,
+                                      input_nonzeros_indexs_series))
+
+    # t
+    batch_counter = 0
+    slice_counter_per_case = 0
+    epoch = 0
     while True:
         image_data_list = []
         box_data_list = []
         mask_data_list = []
+        # raw_img_path =[]
+        # raw_mask_path = []
+        # # mypolygon_data = []
+        # my_annotation = []
+        # print(images_list)
+        # print(masks_list)
+        if batch_counter == 0 and train_flag == "Train":
+            np.random.shuffle(ziped_series_mask_list)
+            inputSeries, labelSeries, input_mean_list_series, input_std_list_series, input_nonzeros_indexs_series = zip(*ziped_series_mask_list)  # case shuffle not shuffle inside the case
 
+        temp_input_series = inputSeries[case_count]
+        temp_label_series = labelSeries[case_count]
+        input_mean_series =  input_mean_list_series[case_count]
+        input_std_series = input_std_list_series[case_count]
+        # print("input_nonzeros_indexs_series:", input_nonzeros_indexs_series)
+        input_nonzeros_indexs = input_nonzeros_indexs_series[case_count]
+        # case_count =  (case_count + 1) % total_num_cases
+
+       # extract slices: ---------------->
+        case_name = os.path.basename(temp_input_series)
+        # print("case name:", case_name)
+        input_data = extract_series(temp_input_series)
+        label_data = extract_series(temp_label_series)
+
+        if len(input_nonzeros_indexs) != 0:
+            print("found num of non zeros slices:", len(input_nonzeros_indexs))
+        # select nonzero slices:
+        non_zero_inputs = input_data[:,:, input_nonzeros_indexs]
+        non_zero_masks = label_data[:, :, input_nonzeros_indexs]
         b = 0
-        while  b < batch_size:
+        print("non_zero_inputs shape:", non_zero_inputs.shape)
+        while b < batch_size:
             # print("True")
-            if count == 0 and train_flag == "Train":
-                print("shuffle!")
-                np.random.shuffle(data_list)
+            # if count == 0 and train_flag == "Train":
+            #     np.random.shuffle(ziped_img_mask_list)
             # images_list, masks_list = zip(*ziped_img_mask_list)
+            # print("------------------------>\n")
+            print("total slices in current case:", non_zero_inputs.shape[-1])
+            print("current case index:", case_count)
+            print("batch index in one epoch:", batch_counter)
+            print("image index in current case:", slice_counter_per_case)
+            print("image index in a batch:", b)
+            temp_img = non_zero_inputs[:, :, slice_counter_per_case]
+            temp_mask = non_zero_masks[:, :, slice_counter_per_case]
+            # standardize:
+            temp_img = (temp_img - input_mean_series)/input_std_series
 
-            temp_dict_data = data_list[count]
-            print("temp_dict_data:", temp_dict_data)
-            # temp_mask_path = data_list[count]
-            # each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-            # key, value =  list(temp_dict_data)[0].split(" ")
-            splitted_data, nonzero_index  = temp_dict_data
-            splitted_data = splitted_data.split(" ")
-            # splitted_data, nonzero_index =  list(temp_dict_data.values())[0]
-            print("splitted_data:", splitted_data)
-            print("nonzero index:", nonzero_index)
-            # seeds_for_test=random_seeds_list[count] is for the pre-training premilinary
-            img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(splitted_data[0], splitted_data[1],  nonzero_index,
-                                                                                  float(splitted_data[2]), float(splitted_data[3]),
-                                                                                  image_datagen, mask_datagen,
+
+            # ----------------->
+            img, box, myPolygon, aug_mask, selected_coutours = my_get_random_data(temp_img, temp_mask,
+                                                                                  input_shape, image_datagen,
+                                                                                  mask_datagen,
                                                                                   train_or_test=train_flag)
+            # img, box, aug_mask = my_get_random_data(temp_img, temp_mask, input_shape, image_datagen, mask_datagen,
+            #                                         train_or_test=train_flag,
+            #                                         one_case_conter=one_case_conter, case_count=case_count,
+            #                                         case_name=case_name)
+            slice_counter_per_case = (slice_counter_per_case + 1) % non_zero_inputs.shape[-1] # continuously load slices from each case
+            if slice_counter_per_case % non_zero_inputs.shape[-1] == 0:
+                case_count = (case_count +1)% total_num_cases
+            b += 1
 
+            # if (one_case_conter + 1) % input_data.shape[-1] == 0:
+            #     case_count = (case_count + 1) % total_num_cases
+            # print("input shape: ", img.shape)
+            # print("mask shape:", aug_mask.shape)
+            # check the data
+            # if total_count==total_samples:
+            #     epoch+=1
+            # background = np.ones(img.shape)*255
+            #
+            # for c in myPolygon:
+            #     # compute the center of the contour
+            #     M = cv2.moments(c)
+            #     cX = int(M["m10"] / M["m00"])
+            #     cY = int(M["m01"] / M["m00"])
+            #     # draw the contour and center of the shape on the image
+            #     cv2.drawContours(background, [c], -1, (0, 255, 0), 2)
+            #
+            #     # if aug_mask[cY,cX] ==0:
+            #     #     cv2.circle(background, (cX, cY), 7, (222, 100, 170), -1)
+            #     # else:
+            #     #     cv2.circle(background, (cX, cY), 7, (0, 255, 0), -1)
+            #
+            #
+            #     cv2.circle(background, (cX, cY), 7, (0, 255, 0), -1)
+            #     cv2.putText(background, "center", (cX - 20, cY - 20),
+            #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (222, 100, 255), 2)
+            #     # show the image
+            #     # cv2.imshow("Image", background)
+            #     # cv2.waitKey(0)
+            #     cv2.imwrite(contours_compare_root + "batch{}_idx{}_foundMask_".format(epoch, total_count) + 'mask.jpg',
+            #                 aug_mask * 255)
+            #     cv2.imwrite(contours_compare_root + "batch{}_idx{}_found{}C_".format(epoch, total_count, len(myPolygon)) + 'selected_contour.jpg', background)
+            # print("selected_coutours:", selected_coutours)
+            # print("found  contours#:", len(myPolygon))
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_foundMask_".format(epoch, total_count) + 'mask.jpg', aug_mask*255)
+            # #
+            # cv2.drawContours(background, myPolygon, -1, (60, 180, 75))
+            # cv2.imwrite(contours_compare_root + "batch{}_idx{}_found{}C_".format(epoch, total_count, len(myPolygon)) + 'selected_contour.jpg', background)
+            # cv2.imshow(" ", background)
+            # cv2.waitKey()  # show on line need divided 255 save into folder should remove keep in 0 to 255
+            # print("myPolygon.shape:", myPolygon.shape)
+            # check there is zero: if there is boundry points
 
+            # print("myPolygon.shape:", myPolygon.shape)
+            # # check there is zero: if there is boundry points
+            #
+            # print("count before next:", count)
+            # print("range polygon [{}, {}]".format(myPolygon.min(), myPolygon.max()))
 
-            print("box range [{}, {}]:".format(box.min(), box.max()))
-
-
-            count = (count + 1) % total_num_slices
-            b+=1
+            # print(count)
+            # if np.any(myPolygon==0) or np.any(myPolygon==aug_image.shape[0]-1) or np.any(myPolygon==aug_image.shape[1]-1):  # roll back.
+            #
+            #     print("boundary image")
+            #     count -=1
+            #     b-=1
+            #     continue
+            # --------------------->
+            # print("total_count after next:", total_count)
 
             image_data_list.append(img)
             # box_data.append(box)
             box_data_list.append(box)
             mask_data_list.append(aug_mask)
-            print("count after next:", count)
-        print("data batch image", len(image_data_list))
-        print("data batch box", len(box_data_list))
-        print("data batch mask", len(mask_data_list))
+
+        batch_counter = (batch_counter + 1) % total_batches
+        if batch_counter % total_batches == 0:
+            slice_counter_per_case = 0
+            case_count = 0
+
         image_batch = np.array(image_data_list)
         box_batch = np.array(box_data_list)
         mask_batch = np.array(mask_data_list)
         # preprocess the bbox into the regression targets
         y_true = my_preprocess_true_boxes_NPinterp(box_batch, input_shape, anchors, num_classes)
-        # yield [image_batch, *y_true, mask_batch], \
-        #       [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
         yield [image_batch, *y_true, mask_batch], \
-              [np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)), np.zeros(len(image_data_list)),
-               np.zeros(len(image_data_list))]
+              [np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size)]
 
-def linear_norm(x, mi, ma):
-    return (x-mi)/(ma-mi)
 
-def normalize(volume,min,max):
-    """Normalize the volume"""
-    # min = -1000
-    # max = 400
-    volume[volume < min] = min
-    volume[volume > max] = max
-    volume = (volume - min) / (max - min)
-    volume = volume.astype("float32")
-    return volume
+def my_get_random_data(input, mask, input_shape, image_datagen, mask_datagen, train_or_test):
 
-def my_get_random_data(input_path, mask_path, nonzero_index, input_mean_list_series, input_std_list_series,
-                       image_datagen, mask_datagen, train_or_test):
-    # read data
-    input_data = extract_series(input_path)
-    mask_data = extract_series(mask_path)
-    input = input_data[:, :, nonzero_index]
-    mask = mask_data[:, :, nonzero_index]
-    input = np.expand_dims(input, -1)
-
+    input = np.expand_dims(input,-1)
+    input =  np.concatenate([input, input, input], -1)
     # load data ------------------------>
     # image_name = os.path.basename(img_path).replace('.JPG', '')
     # mask_name = os.path.basename(mask_path).replace('.JPG', '')
@@ -1891,39 +1967,19 @@ def my_get_random_data(input_path, mask_path, nonzero_index, input_mean_list_ser
     # print("# selected_coutours:", len(selected_coutours))
 
 
-    full_name = input_path+str(nonzero_index)
+
     # encode contours into annotation lines ---->
-    annotation_line, myPolygon = encode_polygone(full_name, selected_coutours)
+    annotation_line, myPolygon = encode_polygone(" ", selected_coutours)
     # decode contours annotation line into distance
     box_data = My_bilinear_decode_annotationlineNP_inter(annotation_line)
 
     # normal the image ----------------->
     # aug_image = aug_image / 255.0
     # aug_mask = aug_mask / 255.0
-
-
-    # normalization
-    # win1  : window [-3000, 1700]
-    LB1, UB1 = -3000, 1700
-    input1= normalize(aug_image,LB1,UB1)
-    print("input1 range: [{}, {}]".format(input1.min(), input1.max()))
-    # win2  : window  [-1400 500]
-    LB2, UB2 = -1400, 500
-    input2 = normalize(aug_image, LB2, UB2)
-
-    print("input2 range: [{}, {}]".format(input2.min(), input2.max()))
-    # std :
-    # standardize:
-    inputstd = (aug_image - input_mean_list_series) / input_std_list_series
-
-    final_input =  np.concatenate([input1, input2, inputstd], axis=-1)
-    print("inputstd range: [{}, {}]".format(inputstd.min(), inputstd.max()))
-    # final input with 3 channels
     aug_mask = aug_mask
-    print("aug_mask range: [{}, {}]".format(aug_mask.min(), aug_mask.max()))
     aug_mask =  np.expand_dims(aug_mask, -1)  # since in our case ,we only have one class, if multiple classes binary labels concate at the last dimension
     # print("aug_mask.shape:", aug_mask.shape)
-    return final_input, box_data, myPolygon, aug_mask, annotation_line
+    return aug_image, box_data, myPolygon, aug_mask, annotation_line
 
 def encode_polygone(img_path, contours, MAX_VERTICES =1000):
     "give polygons and encode as angle, ditance , probability"
@@ -1965,7 +2021,7 @@ def encode_polygone(img_path, contours, MAX_VERTICES =1000):
 
     return annotation_line, my_poly_list
 
-def My_bilinear_decode_annotationlineNP_inter(encoded_annotationline, MAX_VERTICES=5000, max_boxes=80):
+def My_bilinear_decode_annotationlineNP_inter(encoded_annotationline, MAX_VERTICES=1000, max_boxes=80):
     """
     :param encoded_annotationline: string for lines of img_path and objects c and its contours
     :return: box_data(min_x, min_y, max_x, max_y, c, dists1.dist2...) shape(b, NUM_ANGLE+5)
@@ -2050,20 +2106,17 @@ def get_anchors(anchors_path):
     anchors = [float(x) for x in anchors.split(',')]
     return np.array(anchors).reshape(-1, 2)
 
-def warm_up_func(train_input_series, train_mask_series, batch_size):
+def warm_up_func(train_input_series, train_mask_series):
     train_mean_list_series = []
     train_std_list_series = []
     train_nonzeros_indexs_series = []
     train_nonzeros_slices_num = 0
-    total_num_batchse=0
     for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
 
         non_zeros_indexes = []
 
         data_input = extract_series(each_input_series)
-        print("data input range [{}, {}]".format(data_input.min(), data_input.max()))
         data_mask = extract_series(each_mask_series)
-        print("data mask range [{}, {}]".format(data_mask.min(), data_mask.max()))
         each_v = data_input.reshape([-1])
         print("each_v shape:", each_v.shape)
         each_data_mean = np.mean(each_v, axis=0)
@@ -2081,65 +2134,11 @@ def warm_up_func(train_input_series, train_mask_series, batch_size):
                 # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
                 non_zeros_indexes.append(i)
                 train_nonzeros_slices_num += 1
-
             else:
                 pass
-        total_num_batchse += math.ceil(len(non_zeros_indexes)/ batch_size)
         train_nonzeros_indexs_series.append(non_zeros_indexes)
 
-    # CALCULATE total number of batches for each
-    return train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, total_num_batchse
-
-def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
-    # train_mean_list_series = []
-    # train_std_list_series = []
-    # train_nonzeros_indexs_series = []
-    # train_nonzeros_slices_num = 0
-    # total_num_batchse=0
-    Key_list  = []
-    nonzero_list = []
-    # data_dict = {}
-    data_list = []
-    for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
-
-        non_zeros_indexes = []
-
-        data_input = extract_series(each_input_series)
-        print("data input range [{}, {}]".format(data_input.min(), data_input.max()))
-        data_mask = extract_series(each_mask_series)
-        print("data mask range [{}, {}]".format(data_mask.min(), data_mask.max()))
-        each_v = data_input.reshape([-1])
-        print("each_v shape:", each_v.shape)
-        each_data_mean = np.mean(each_v, axis=0)
-        each_data_std = np.std(each_v, axis=0)
-        # train_mean_list_series.append(each_data_mean)
-        # train_std_list_series.append(each_data_std)
-        print("each train series data shape:", data_input.shape)
-
-        assert data_input.shape[-1] == data_mask.shape[-1]
-        for i in range(data_mask.shape[-1]):
-
-            temp_mask = data_mask[:, :, i]
-            # print("each slice mask shape:", temp_mask.shape)
-            nonzeros_in_mask = np.count_nonzero(temp_mask)
-            if nonzeros_in_mask > 5:
-
-                # print("find non zeros in the mask at {}: {}".format(i, nonzeros_in_mask))
-                # non_zeros_indexes.append(i)
-                # train_nonzeros_slices_num += 1
-                key = each_input_series + " " + each_mask_series + " " + str(each_data_mean) + " " + str(each_data_std)
-                # value =  i
-                Key_list.append(key)
-                nonzero_list.append(i)
-
-
-            else:
-                pass
-    ziped_list =  zip(Key_list, nonzero_list)
-
-
-    return list(ziped_list)
-
+    return train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, train_nonzeros_slices_num
 
 
 if __name__ == "__main__":
@@ -2150,9 +2149,7 @@ if __name__ == "__main__":
 
 
     def _main():
-
-        bs =4 # batch size
-        project_name = 'LungEXP4_preproInNp_DS{}_{}_{:.2f}'.format(Ds,model_index, ANGLE_STEP)
+        project_name = 'LungExp1_DS{}_{}_{:.2f}'.format(Ds,model_index, ANGLE_STEP)
         pretrained_model_name ='ep042-loss11.430-val_loss3.604.h5'
         phase = 1
 
@@ -2229,113 +2226,79 @@ if __name__ == "__main__":
         # train_total_series = glob('F:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
         # for laptop
         train_total_series = glob('E:\\dataset\\Lung\\COVID-19-20\\COVID-19-20_v2\\Train/*')
-        print("total len of labeled series:", len(train_total_series))
+        print("total len of train series:", len(train_total_series))
         # print("total len of val series:", len(val_total_series))
-        total_input_series_paths = []
-        total_labels_series_paths = []
+        train_input_series_paths = []
+        train_labels_series_paths = []
         for each_train_path in train_total_series:  # find input and label
             # print(each_train_path)
             if "seg" in each_train_path:
-                total_labels_series_paths.append(each_train_path)
+                train_labels_series_paths.append(each_train_path)
             else:
-                total_input_series_paths.append(each_train_path)
+                train_input_series_paths.append(each_train_path)
 
-        print("total len of total input series:", len(total_input_series_paths))
-        print("total len of total mask series:", len(total_labels_series_paths))
+        print("total len of total input series:", len(train_input_series_paths))
+        print("total len of total mask series:", len(train_labels_series_paths))
 
 
         # warm up ~~~---------------->
         # split train dataset:
         print("splitting the training dataset into train and val")
-        train_rate = 0.8
-
-        val_rate = 0.5 # half of the remainning
+        train_rate = 0.01
         # print("raw total series paths:", train_input_series_paths)
-        num_train_cases = int(train_rate * len(total_input_series_paths))
+        num_train_cases = int(train_rate * len(train_input_series_paths))
         print("splitted num_train_cases:", num_train_cases)
-
-        # num_val_cases = int(val_rate * len(train_input_series_paths))
-        # print("splitted num_train_cases:", num_train_cases)
-
         # for train ->
-        # train_input_series = total_input_series_paths[:num_train_cases]
-        # print("splitted train_input_series # :", len(train_input_series))
-        # train_mask_series = total_labels_series_paths[:num_train_cases]
-
-        train_input_series = total_input_series_paths[0:1]
+        train_input_series = train_input_series_paths[:num_train_cases]
         print("splitted train_input_series # :", len(train_input_series))
-        train_mask_series = total_labels_series_paths[0:1]
+        train_mask_series = train_labels_series_paths[:num_train_cases]
         # for val ->
-        # val_input_series = total_input_series_paths[
-        #                    num_train_cases:num_train_cases+1]   # for check purpose only
-        # val_mask_series = total_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
-        remaining_input_series = total_input_series_paths[num_train_cases:]  ## split training data into real train and validation
-        remaining_mask_series = total_labels_series_paths[num_train_cases:]
-
-        num_val_cases = int(val_rate * len(remaining_input_series))
-        val_input_series = remaining_input_series[:num_val_cases]
-        print("splitted val_input_series # :", len(val_input_series))
-        val_mask_series = remaining_mask_series[:num_val_cases]
-        # # for test ->
-        # test_input_series = remaining_input_series[num_val_cases:]
-        # print("splitted test_input_series # :", len(test_input_series))
-        # test_mask_series = remaining_mask_series[num_val_cases:]
-
-        # # for the laptop:
-        val_input_series = remaining_input_series[0:1]
-        print("splitted val_input_series # :", len(train_input_series))
-        val_mask_series = remaining_mask_series[0:1]
-
-        # # for test ->
-        test_input_series = remaining_input_series[num_val_cases:]
-        # print("splitted test_input_series # :", len(test_input_series))
-        test_mask_series = remaining_mask_series[num_val_cases:]
-
+        val_input_series = train_input_series_paths[
+                           num_train_cases:num_train_cases+1]   # for check purpose only
+        val_mask_series = train_labels_series_paths[num_train_cases:num_train_cases+1] # for check purpose only
+        # val_input_series = train_input_series_paths[num_train_cases:]  ## split training data into real train and validation
+        # val_mask_series = train_labels_series_paths[num_train_cases:]
+        print("splitted val_input_series # :", len((val_input_series)))
         # anaylize the training CTs
         print("train series len:", len(train_input_series))
         print("val series len:", len(val_input_series))
-        print("test series len:", len(test_input_series))
+
         # warm up for training needed
 
         print("train warm up ---------------------------->")
         # for each_input_series, each_mask_series in zip(train_input_series, train_mask_series):
-        train_data_list= \
-            warm_up_funcV2(train_input_series, train_mask_series, batch_size=bs)
+        train_mean_list_series, train_std_list_series, train_nonzeros_indexs_series, train_nonzeros_slices_num = \
+            warm_up_func(train_input_series, train_mask_series)
 
-        val_data_list = \
-            warm_up_funcV2(val_input_series, val_mask_series, batch_size=bs)
+        val_mean_list_series, val_std_list_series, val_nonzeros_indexs_series, val_nonzeros_slices_num = \
+            warm_up_func(val_input_series, val_mask_series)
 
 
-        print("found nonzero slice:", train_data_list)
-        print("found train nonzero slices:", len(train_data_list))
-        print("found val nonzero slices:", len(val_data_list))
 
-        # # num_train = train_num_batches
-        # # # num_val = val_num_batches
-        # print("found nonzero train batches:", train_num_batches)
-        # print("found nonzero val batches:", val_num_batches)
-        #
-        #
-        # # create data_generator
-        #
-        # # for train:
-        train_Gen = LungGen(train_data_list,
-                            batch_size=bs,
+        num_train = train_nonzeros_slices_num
+        num_val = val_nonzeros_slices_num
+        print("found nonzero train slices:", num_train)
+        print("found nonzero val slices:", num_val)
+
+
+        # create data_generator
+
+        # for train:
+        train_Gen = LungGen(train_input_series, train_mask_series,
+                            train_mean_list_series , train_std_list_series, train_nonzeros_indexs_series,
+
+                            total_samples= num_train,
+                            batch_size=4,
                              input_shape=(512, 512),
                              anchors=anchors, num_classes=num_classes,
                              train_flag="Train")
-        val_Gen = LungGen(val_data_list,
-                          batch_size=bs,
+        val_Gen = LungGen(val_input_series, val_mask_series,
+                          val_mean_list_series, val_std_list_series, val_nonzeros_indexs_series,
+                          total_samples=num_val,
+                          batch_size=4,
                            input_shape=(512,512),
                            anchors=anchors, num_classes=num_classes,
                            train_flag="test")
-        num_train = int(len(train_data_list))
-        num_val = len(val_data_list)
-
-        batch_size = 4  # decrease/increase batch size according to your memory of your GPU
-        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-
-
 
         # with open(annotation_path) as f:
         #     lines = f.readlines()
@@ -2365,8 +2328,8 @@ if __name__ == "__main__":
 
 
 
-        # batch_size = 4 # decrease/increase batch size according to your memory of your GPU
-        # print('Train on {} batches, val on {} batches, with batch size {}.'.format(train_num_batches, val_num_batches, bs))
+        batch_size = 4 # decrease/increase batch size according to your memory of your GPU
+        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
 
 
         """
@@ -2398,25 +2361,17 @@ if __name__ == "__main__":
         lossWeights = {"ciou_loss": 1, "confidence_loss": 1, "polar_diou_loss": 1, "class_loss": 1,  "mask_Diceloss": 1}
         model.compile(optimizer=Adadelta(0.5), loss=losses, loss_weights=lossWeights)
 
-        epochs = 100
+        epochs = 2
 
         # os.chdir("/simulator_dataset/imgs") # for the simulator image path
-        # model.fit_generator(train_Gen,
-        #           # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-        #           steps_per_epoch=max(1, num_train // batch_size),
-        #           validation_data=val_Gen,
-        #           validation_steps=max(1, num_val // batch_size),
-        #           epochs=epochs,
-        #           initial_epoch=0,
-        #           callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
         model.fit_generator(train_Gen,
-                            # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
-                            steps_per_epoch=max(1, num_train // batch_size),
-                            validation_data=val_Gen,
-                            validation_steps=max(1, num_val // batch_size),
-                            epochs=epochs,
-                            initial_epoch=0,
-                            callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
+                  # steps_per_epoch=max(1, math.ceil(num_train/batch_size)),
+                  steps_per_epoch=max(1, num_train // batch_size),
+                  validation_data=val_Gen,
+                  validation_steps=max(1, num_val // batch_size),
+                  epochs=epochs,
+                  initial_epoch=0,
+                  callbacks=[reduce_lr, checkpoint, TensorBoardcallback, deleteOldH5])
 
 
 
@@ -2444,7 +2399,6 @@ if __name__ == "__main__":
         print("anchors_per_level:", anchors_per_level)
         print("num_classes:", num_classes)
         model_body, Model_mask = yolo_body(image_input, anchors_per_level, num_classes)
-        print("model_body.inputs:", model_body.inputs)
         print("model_body.output.shape",model_body.outputs)
         print("Model_mask.output.shape", Model_mask.outputs)
         print('Create Poly-YOLO model with {} anchors and {} classes.'.format(num_anchors, num_classes))

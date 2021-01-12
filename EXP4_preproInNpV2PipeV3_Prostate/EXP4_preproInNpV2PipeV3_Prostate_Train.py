@@ -2135,9 +2135,12 @@ def warm_up_funcV2(train_input_series, train_mask_series, batch_size):
 
             else:
                 pass
-    ziped_list =  zip(Key_list, nonzero_list)
+            ziped_list =  zip(Key_list, nonzero_list)
 
+        # total_num_batchse += math.ceil(len(non_zeros_indexes)/ batch_size)
+        # train_nonzeros_indexs_series.append(non_zeros_indexes)
 
+    # CALCULATE total number of batches for each
     return list(ziped_list)
 
 
