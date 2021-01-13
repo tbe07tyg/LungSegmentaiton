@@ -625,14 +625,14 @@ if __name__ == '__main__':
 
     # Lung Segmentation
     # for laptop
-    # Saved_model_file_root = "E:\\Projects\\LungSegmentaiton\\saved_model\\Exp2NewPipeline"
-    # Inference_scripts_root = "E:\\Projects\\LungSegmentaiton\\EXP1"
-    # output_folder = "E:\\Projects\\LungSegmentaiton\\output"  # the name path can not be too long
-    # for lab pc
-    Saved_model_file_root = "F:\\LungSeg\\saved_models\\EXP1"
-    Inference_scripts_root = "C:\\MyProjects\\LungSegmentaiton\\EXP1"
+    Saved_model_file_root = "E:\\Projects\\LungSegmentaiton\\saved_model\\EXP4_preproInNpV2PipeV3_Prostate"
+    Inference_scripts_root = "E:\\Projects\\LungSegmentaiton\\EXP4_preproInNpV2PipeV3_Prostate"
+    output_folder = "E:\\Projects\\LungSegmentaiton\\output\\EXP4_preproInNpV2PipeV3_Prostate"  # the name path can not be too long
+    # # for lab pc
+    # Saved_model_file_root = "F:\\LungSeg\\saved_models\\EXP1"
+    # Inference_scripts_root = "C:\\MyProjects\\LungSegmentaiton\\EXP1"
     #
-    output_folder = "F:\\LungSeg\\outputs"  # the name path can not be too long
+    # output_folder = "F:\\LungSeg\\outputs"  # the name path can not be too long
     infer_case(Inference_scripts_root=Inference_scripts_root,
                Saved_model_file_root=Saved_model_file_root,
                output_folder=output_folder)
